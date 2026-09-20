@@ -1,0 +1,27 @@
+User-agent: *
+Allow: /
+
+# Block cart, checkout, account, and admin flows — no SEO value, often duplicate/private
+Disallow: /cart
+Disallow: /checkout
+Disallow: /account
+Disallow: /admin
+Disallow: /login
+Disallow: /register
+Disallow: /order-confirmation
+Disallow: /api/
+
+# Block internal search results and filtered/sorted product listings (duplicate content)
+Disallow: /*?search=
+Disallow: /*?sort=
+Disallow: /*?filter=
+Disallow: /*?utm_
+
+# Explicitly allow product images and assets to be crawled (needed for rich results & image search)
+Allow: /assets/
+Allow: /*.jpg$
+Allow: /*.jpeg$
+Allow: /*.png$
+Allow: /*.webp$
+
+Sitemap: https://www.zuhrbd.com/sitemap.xml

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+
+  <!-- ================= CORE PAGES ================= -->
+
+  <url>
+    <loc>https://www.zuhrbd.com/</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <url>
+    <loc>https://www.zuhrbd.com/about</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <url>
+    <loc>https://www.zuhrbd.com/contact</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <url>
+    <loc>https://www.zuhrbd.com/blog</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+
+  <!-- ================= CATEGORY PAGES ================= -->
+  <!-- EXAMPLE PATTERN — replace with your real category slugs -->
+
+  <url>
+    <loc>https://www.zuhrbd.com/category/attars</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://www.zuhrbd.com/category/oil-perfumes</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+
+  <!-- ================= PRODUCT PAGES ================= -->
+  <!-- EXAMPLE PATTERN — replace slug + image with your real products.
+       Product pages get priority 0.9 (second only to homepage) because
+       these are your money pages — the ones that actually convert.
+       The <image:image> block below helps your product photos rank
+       in Google Image Search, which is free organic traffic most
+       perfume/attar competitors in BD are NOT bothering to claim. -->
+
+  <url>
+    <loc>https://www.zuhrbd.com/product/rose-attar</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://www.zuhrbd.com/images/products/rose-attar.jpg</image:loc>
+      <image:title>ZUHR Rose Attar - Luxury Alcohol-Free Oil Perfume</image:title>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://www.zuhrbd.com/product/oud-attar</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://www.zuhrbd.com/images/products/oud-attar.jpg</image:loc>
+      <image:title>ZUHR Oud Attar - Luxury Alcohol-Free Oil Perfume</image:title>
+    </image:image>
+  </url>
+
+
+  <!-- ================= BLOG POSTS ================= -->
+  <!-- EXAMPLE PATTERN — replace with your real post slugs -->
+
+  <url>
+    <loc>https://www.zuhrbd.com/blog/how-to-apply-attar-correctly</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+
+  <!--
+    IMPORTANT — READ BEFORE LAUNCH:
+
+    Everything under CATEGORY, PRODUCT, and BLOG POSTS above is a SAMPLE
+    to show you the correct format. Replace the example URLs with your
+    real slugs, real image paths, and real product names before this
+    goes live.
+
+    As your catalog grows past ~15-20 products, stop editing this file
+    by hand. Wire up generate-sitemap.js (already provided) as a
+    "prebuild" step so it's generated automatically from your real
+    product/category/blog data every time you deploy. A sitemap with
+    dead or missing URLs actively hurts your crawl trust with Google —
+    worse than having no sitemap at all.
+  -->
+
+</urlset>
