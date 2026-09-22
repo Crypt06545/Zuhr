@@ -1,15 +1,79 @@
 import 'dotenv/config';
+
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import hpp from 'hpp';
+import morgan from 'morgan';
+
 import { AppModule } from './app.module.js';
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 
-  const port = process.env.PORT ?? 3000;
+import { ResponseInterceptor } from './common/interceptors/response.interceptor.js';
+
+async function bootstrap() {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Proxy
+  app.set('trust proxy', 1);
+
+  // API prefix
+  app.setGlobalPrefix('api/v1');
+
+  // Security headers
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: false,
+    }),
+  );
+
+  // HTTP Parameter Pollution protection
+  app.use(hpp());
+
+  // Cookies
+  app.use(cookieParser());
+
+  // Logging
+  app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+  // CORS
+  app.enableCors({
+    origin: process.env.FRONTEND_URL,
+    credentials: true,
+  });
+
+  // DTO validation
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+
+  // Global success response
+  app.useGlobalInterceptors(new ResponseInterceptor());
+
+  // Global error response
+  app.useGlobalFilters(new AllExceptionsFilter());
+
+  // Graceful shutdown
+  app.enableShutdownHooks();
+
+  const port = Number(process.env.PORT) || 3000;
+
   await app.listen(port);
 
   const mode =
     process.env.NODE_ENV === 'production' ? 'PRODUCTION' : 'DEVELOPMENT';
+
   console.log(`🚀 Server running on port ${port} (${mode})`);
+
+  console.log(`🔗 API base: http://localhost:${port}/api/v1`);
 }
+
 await bootstrap();
