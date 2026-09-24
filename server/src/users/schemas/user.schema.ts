@@ -15,8 +15,6 @@ export enum UserType {
 
 @Schema({ collection: 'users', timestamps: true, versionKey: false })
 export class User {
-  // ─── Basic Information ───
-
   @Prop({ type: String, required: true, trim: true, maxlength: 100 })
   name: string;
 
@@ -39,8 +37,6 @@ export class User {
   @Prop({ type: String, default: null, trim: true })
   mobile: string | null;
 
-  // ─── Account ───
-
   @Prop({
     type: String,
     enum: UserStatus,
@@ -61,15 +57,11 @@ export class User {
   @Prop({ type: Date, default: null })
   passwordChangedAt: Date | null;
 
-  // ─── Brute-force protection ───
-
   @Prop({ type: Number, default: 0 })
   failedLoginAttempts: number;
 
   @Prop({ type: Date, default: null })
   lockedUntil: Date | null;
-
-  // ─── Two-Factor Authentication ───
 
   @Prop({ type: Boolean, default: false })
   twoFactorEnabled: boolean;

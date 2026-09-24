@@ -15,6 +15,7 @@ type ErrorResponse = {
 
 type MongoDuplicateError = {
   code?: number;
+  keyPattern?: Record<string, number>;
 };
 
 @Catch()
@@ -59,7 +60,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
       (exception as MongoDuplicateError).code === 11000
     ) {
       statusCode = HttpStatus.CONFLICT;
-      message = 'This value already exists.';
+      const keyPattern = (exception as MongoDuplicateError).keyPattern;
+      const duplicateField = keyPattern ? Object.keys(keyPattern)[0] : 'value';
+
+      message = `This ${duplicateField} is already registered.`;
     }
 
     if (statusCode === HttpStatus.INTERNAL_SERVER_ERROR) {

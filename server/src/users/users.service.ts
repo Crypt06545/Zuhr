@@ -1,0 +1,138 @@
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { RegisterDto } from '../auth/dto/register.dto.js';
+import { User, UserDocument } from './schemas/user.schema.js';
+import {
+  RefreshToken,
+  RefreshTokenDocument,
+} from './schemas/refresh-token.schema.js';
+
+export interface DeviceInfo {
+  deviceName: string;
+  userAgent: string | null;
+  ipAddress: string | null;
+}
+
+@Injectable()
+export class UsersService {
+  constructor(
+    @InjectModel(User.name) private userModel: Model<User>,
+    @InjectModel(RefreshToken.name)
+    private refreshTokenModel: Model<RefreshToken>,
+  ) {}
+
+  // ─── User ───
+
+  async createUser(registerDto: RegisterDto) {
+    const existingUser = await this.userModel.findOne({
+      email: registerDto.email,
+    });
+
+    if (existingUser) {
+      throw new ConflictException('This email is already registered.');
+    }
+
+    const newUser = await this.userModel.create(registerDto);
+
+    return {
+      id: newUser._id.toString(),
+      name: newUser.name,
+      email: newUser.email,
+    };
+  }
+
+  async getUserForLogin(email: string): Promise<UserDocument | null> {
+    return this.userModel.findOne({ email }).select('+password');
+  }
+
+  async getUserByEmail(email: string) {
+    return this.userModel.findOne({ email });
+  }
+
+  async updateLastLogin(userId: string) {
+    await this.userModel.updateOne(
+      { _id: userId },
+      { $set: { lastLoginAt: new Date() } },
+    );
+  }
+
+  // ─── Refresh Token / Session Management ───
+
+  async createSession(
+    userId: string,
+    tokenHash: string,
+    deviceInfo: DeviceInfo,
+    expiresAt: Date,
+  ) {
+    return this.refreshTokenModel.create({
+      user: new Types.ObjectId(userId),
+      tokenHash,
+      deviceName: deviceInfo.deviceName,
+      userAgent: deviceInfo.userAgent,
+      ipAddress: deviceInfo.ipAddress,
+      expiresAt,
+    });
+  }
+
+  async enforceSessionLimit(userId: string, maxSessions: number) {
+    const activeSessions = await this.refreshTokenModel
+      .find({
+        user: new Types.ObjectId(userId), // ⚠️ এইখানে convert করলাম
+        isRevoked: false,
+        expiresAt: { $gt: new Date() },
+      })
+      .sort({ createdAt: 1 });
+
+    if (activeSessions.length >= maxSessions) {
+      const excessCount = activeSessions.length - maxSessions + 1;
+      const sessionsToRemove = activeSessions.slice(0, excessCount);
+
+      await this.refreshTokenModel.deleteMany({
+        _id: { $in: sessionsToRemove.map((s) => s._id) },
+      });
+    }
+  }
+
+  async findSessionById(
+    sessionId: string,
+  ): Promise<RefreshTokenDocument | null> {
+    return this.refreshTokenModel.findById(sessionId).select('+tokenHash');
+  }
+
+  async revokeSession(sessionId: string) {
+    await this.refreshTokenModel.deleteOne({ _id: sessionId });
+  }
+
+  async getActiveSessions(userId: string) {
+    return this.refreshTokenModel
+      .find({
+        user: new Types.ObjectId(userId), // ⚠️ ফিক্স
+        isRevoked: false,
+        expiresAt: { $gt: new Date() },
+      })
+      .select('-tokenHash')
+      .sort({ createdAt: -1 });
+  }
+
+  async revokeAllSessions(userId: string) {
+    await this.refreshTokenModel.deleteMany({
+      user: new Types.ObjectId(userId), // ⚠️ ফিক্স
+    });
+  }
+
+  async replaceSessionToken(
+    sessionId: string,
+    newTokenHash: string,
+    newExpiresAt: Date,
+  ) {
+    await this.refreshTokenModel.updateOne(
+      { _id: sessionId },
+      { $set: { tokenHash: newTokenHash, expiresAt: newExpiresAt } },
+    );
+  }
+}
