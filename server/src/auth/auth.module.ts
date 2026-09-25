@@ -8,6 +8,7 @@ import { UsersModule } from '../users/users.module.js';
 import { JwtAccessStrategy } from './strategies/jwt-access.strategy.js';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy.js';
 import { MailerModule } from '../common/mailer/mailer.module.js';
+import { TwoFactorService } from './two-factor.service.js';
 
 @Module({
   imports: [
@@ -22,6 +23,11 @@ import { MailerModule } from '../common/mailer/mailer.module.js';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAccessStrategy, JwtRefreshStrategy], // ⚠️ Guard দুইটা বাদ দিলাম
+  providers: [
+    AuthService,
+    TwoFactorService,
+    JwtAccessStrategy,
+    JwtRefreshStrategy,
+  ], // ⚠️ Guard দুইটা বাদ দিলাম
 })
 export class AuthModule {}

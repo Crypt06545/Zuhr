@@ -68,6 +68,9 @@ export class UsersService {
     tokenHash: string,
     deviceInfo: DeviceInfo,
     expiresAt: Date,
+    trustedDeviceTokenHash: string | null = null,
+    trustedDeviceExpiresAt: Date | null = null,
+    twoFactorVerifiedAt: Date | null = null,
   ) {
     return this.refreshTokenModel.create({
       user: new Types.ObjectId(userId),
@@ -76,6 +79,9 @@ export class UsersService {
       userAgent: deviceInfo.userAgent,
       ipAddress: deviceInfo.ipAddress,
       expiresAt,
+      trustedDeviceTokenHash,
+      trustedDeviceExpiresAt,
+      twoFactorVerifiedAt,
     });
   }
 
@@ -101,11 +107,23 @@ export class UsersService {
   async findSessionById(
     sessionId: string,
   ): Promise<RefreshTokenDocument | null> {
-    return this.refreshTokenModel.findById(sessionId).select('+tokenHash');
+    return this.refreshTokenModel
+      .findById(sessionId)
+      .select('+tokenHash +trustedDeviceTokenHash');
   }
-
   async revokeSession(sessionId: string) {
-    await this.refreshTokenModel.deleteOne({ _id: sessionId });
+    await this.refreshTokenModel.updateOne(
+      { _id: sessionId },
+      {
+        $set: {
+          isRevoked: true,
+        },
+      },
+    );
+
+    return {
+      message: 'Logged out successfully.',
+    };
   }
 
   async getActiveSessions(userId: string) {
@@ -120,9 +138,16 @@ export class UsersService {
   }
 
   async revokeAllSessions(userId: string) {
-    await this.refreshTokenModel.deleteMany({
-      user: new Types.ObjectId(userId), // ⚠️ ফিক্স
-    });
+    await this.refreshTokenModel.updateMany(
+      {
+        user: new Types.ObjectId(userId),
+      },
+      {
+        $set: {
+          isRevoked: true,
+        },
+      },
+    );
   }
 
   async replaceSessionToken(
@@ -200,5 +225,84 @@ export class UsersService {
 
   async getUserById(userId: string) {
     return this.userModel.findById(userId);
+  }
+  // users.service.ts এ যোগ করো
+
+  async getUserForTwoFactorSetup(userId: string) {
+    return this.userModel
+      .findById(userId)
+      .select('+twoFactorSecret +twoFactorRecoveryCodeHashes');
+  }
+
+  async setTwoFactorSecret(userId: string, secret: string) {
+    await this.userModel.updateOne(
+      { _id: userId },
+      { $set: { twoFactorSecret: secret } },
+    );
+  }
+
+  async enableTwoFactor(userId: string, recoveryCodeHashes: string[]) {
+    await this.userModel.updateOne(
+      { _id: userId },
+      {
+        $set: {
+          twoFactorEnabled: true,
+          twoFactorRecoveryCodeHashes: recoveryCodeHashes,
+        },
+      },
+    );
+  }
+
+  async disableTwoFactor(userId: string) {
+    await this.userModel.updateOne(
+      { _id: userId },
+      {
+        $set: {
+          twoFactorEnabled: false,
+          twoFactorSecret: null,
+          twoFactorRecoveryCodeHashes: [],
+        },
+      },
+    );
+  }
+
+  async getUserForRecoveryVerification(userId: string) {
+    return this.userModel
+      .findById(userId)
+      .select('+twoFactorRecoveryCodeHashes');
+  }
+
+  async consumeRecoveryCode(userId: string, remainingHashes: string[]) {
+    await this.userModel.updateOne(
+      { _id: userId },
+      { $set: { twoFactorRecoveryCodeHashes: remainingHashes } },
+    );
+  }
+
+  async findTrustedDeviceSession(
+    userId: string,
+    trustedDeviceTokenHash: string,
+  ): Promise<RefreshTokenDocument | null> {
+    return this.refreshTokenModel
+      .findOne({
+        user: new Types.ObjectId(userId),
+        trustedDeviceTokenHash,
+        trustedDeviceExpiresAt: {
+          $gt: new Date(),
+        },
+      })
+      .select('+trustedDeviceTokenHash');
+  }
+
+  async clearTrustedDevice(sessionId: string) {
+    await this.refreshTokenModel.updateOne(
+      { _id: sessionId },
+      {
+        $set: {
+          trustedDeviceTokenHash: null,
+          trustedDeviceExpiresAt: null,
+        },
+      },
+    );
   }
 }

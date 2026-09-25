@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -21,11 +22,20 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { VerifyOtpDto } from './dto/verify-otp.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { ResendVerificationDto } from './dto/resend-verification.dto.js';
+import { Enable2faDto } from './dto/enable-2fa.dto.js';
+import { Disable2faDto } from './dto/disable-2fa.dto.js';
+import { Verify2faLoginDto } from './dto/verify-2fa-login.dto.js';
+import { VerifyRecoveryCodeDto } from './dto/verify-recovery-code.dto.js';
+// ⚠️ path তোমার project অনুযায়ী ঠিক করে নিও
+import {
+  REFRESH_TOKEN_TTL_MS,
+  TRUSTED_DEVICE_TTL_MS,
+} from '../constants/auth.constants.js';
 
 const REFRESH_COOKIE_NAME = 'refreshToken';
-const REFRESH_COOKIE_MAX_AGE = Number(
-  process.env.REFRESH_TOKEN_COOKIE_MAX_AGE ?? 7 * 24 * 60 * 60 * 1000,
-);
+const REFRESH_COOKIE_MAX_AGE = REFRESH_TOKEN_TTL_MS;
+const TRUSTED_DEVICE_COOKIE_NAME = 'trustedDevice';
+const TRUSTED_DEVICE_MAX_AGE = TRUSTED_DEVICE_TTL_MS;
 
 @Controller('auth')
 export class AuthController {
@@ -45,9 +55,30 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const deviceInfo = this.extractDeviceInfo(req);
-    const result = await this.authService.login(loginDto, deviceInfo);
+    const trustedDeviceToken =
+      req.cookies?.[TRUSTED_DEVICE_COOKIE_NAME] ?? null;
+
+    const result = await this.authService.login(
+      loginDto,
+      deviceInfo,
+      trustedDeviceToken,
+    );
+
+    if (result.twoFactorRequired) {
+      return {
+        message: result.message,
+        data: {
+          twoFactorRequired: true,
+          tempToken: result.tempToken,
+        },
+      };
+    }
 
     this.setRefreshCookie(res, result.refreshToken);
+
+    if (result.trustedDeviceToken) {
+      this.setTrustedDeviceCookie(res, result.trustedDeviceToken);
+    }
 
     return {
       message: 'Logged in successfully.',
@@ -113,6 +144,7 @@ export class AuthController {
     const result = await this.authService.logoutAllDevices(user.userId);
 
     res.clearCookie(REFRESH_COOKIE_NAME);
+    res.clearCookie(TRUSTED_DEVICE_COOKIE_NAME);
     return result;
   }
 
@@ -129,32 +161,7 @@ export class AuthController {
     return { message: 'Profile fetched successfully.', data: req.user };
   }
 
-  // ─── Helpers ───
-
-  private setRefreshCookie(res: Response, refreshToken: string) {
-    res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: REFRESH_COOKIE_MAX_AGE,
-    });
-  }
-
-  private extractDeviceInfo(req: Request) {
-    const userAgent = req.headers['user-agent'] || null;
-    const ipAddress = (req.ip || req.socket.remoteAddress || null) as
-      string | null;
-
-    let deviceName = 'Unknown Device';
-    if (userAgent) {
-      if (/mobile/i.test(userAgent)) deviceName = 'Mobile Device';
-      else if (/windows/i.test(userAgent)) deviceName = 'Windows PC';
-      else if (/mac/i.test(userAgent)) deviceName = 'Mac';
-      else if (/linux/i.test(userAgent)) deviceName = 'Linux';
-    }
-
-    return { deviceName, userAgent, ipAddress };
-  }
+  // ─── Password Reset ───
 
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
@@ -174,9 +181,14 @@ export class AuthController {
     return this.authService.resetPassword(dto);
   }
 
+  // ─── Email Verification ───
+
   @Get('verify-email')
   @HttpCode(HttpStatus.OK)
-  verifyEmail(@Query('token') token: string) {
+  verifyEmail(@Query('token') token?: string) {
+    if (!token) {
+      throw new BadRequestException('Verification token is required.');
+    }
     return this.authService.verifyEmail(token);
   }
 
@@ -184,5 +196,114 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   resendVerification(@Body() dto: ResendVerificationDto) {
     return this.authService.resendVerificationEmail(dto);
+  }
+
+  // ─── Two-Factor Authentication ───
+
+  @UseGuards(JwtAccessGuard)
+  @Post('2fa/generate')
+  @HttpCode(HttpStatus.OK)
+  generateTwoFactor(@Req() req: Request) {
+    const user = req.user as { userId: string; email: string };
+    return this.authService.generateTwoFactorSecret(user.userId, user.email);
+  }
+
+  @UseGuards(JwtAccessGuard)
+  @Post('2fa/enable')
+  @HttpCode(HttpStatus.OK)
+  enableTwoFactor(@Req() req: Request, @Body() dto: Enable2faDto) {
+    const user = req.user as { userId: string };
+    return this.authService.enableTwoFactor(user.userId, dto);
+  }
+
+  @UseGuards(JwtAccessGuard)
+  @Post('2fa/disable')
+  @HttpCode(HttpStatus.OK)
+  disableTwoFactor(@Req() req: Request, @Body() dto: Disable2faDto) {
+    const user = req.user as { userId: string };
+    return this.authService.disableTwoFactor(user.userId, dto);
+  }
+
+  @Post('2fa/verify-login')
+  @HttpCode(HttpStatus.OK)
+  async verifyTwoFactorLogin(
+    @Body() dto: Verify2faLoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const deviceInfo = this.extractDeviceInfo(req);
+    const result = await this.authService.verifyTwoFactorLogin(dto, deviceInfo);
+
+    this.setRefreshCookie(res, result.refreshToken);
+
+    if (result.trustedDeviceToken) {
+      this.setTrustedDeviceCookie(res, result.trustedDeviceToken);
+    }
+
+    return {
+      message: 'Logged in successfully.',
+      data: { accessToken: result.accessToken, user: result.user },
+    };
+  }
+
+  @Post('2fa/verify-recovery')
+  @HttpCode(HttpStatus.OK)
+  async verifyRecoveryCode(
+    @Body() dto: VerifyRecoveryCodeDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const deviceInfo = this.extractDeviceInfo(req);
+    const result = await this.authService.verifyRecoveryCodeLogin(
+      dto,
+      deviceInfo,
+    );
+
+    this.setRefreshCookie(res, result.refreshToken);
+
+    if (result.trustedDeviceToken) {
+      this.setTrustedDeviceCookie(res, result.trustedDeviceToken);
+    }
+
+    return {
+      message: 'Logged in successfully using recovery code.',
+      data: { accessToken: result.accessToken, user: result.user },
+    };
+  }
+
+  // ─── Helpers ───
+
+  private setRefreshCookie(res: Response, refreshToken: string) {
+    res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: REFRESH_COOKIE_MAX_AGE,
+    });
+  }
+
+  private setTrustedDeviceCookie(res: Response, token: string) {
+    res.cookie(TRUSTED_DEVICE_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: TRUSTED_DEVICE_MAX_AGE,
+    });
+  }
+
+  private extractDeviceInfo(req: Request) {
+    const userAgent = req.headers['user-agent'] || null;
+    const ipAddress = (req.ip || req.socket.remoteAddress || null) as
+      string | null;
+
+    let deviceName = 'Unknown Device';
+    if (userAgent) {
+      if (/mobile/i.test(userAgent)) deviceName = 'Mobile Device';
+      else if (/windows/i.test(userAgent)) deviceName = 'Windows PC';
+      else if (/mac/i.test(userAgent)) deviceName = 'Mac';
+      else if (/linux/i.test(userAgent)) deviceName = 'Linux';
+    }
+
+    return { deviceName, userAgent, ipAddress };
   }
 }
