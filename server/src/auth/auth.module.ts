@@ -7,11 +7,13 @@ import { AuthController } from './auth.controller.js';
 import { UsersModule } from '../users/users.module.js';
 import { JwtAccessStrategy } from './strategies/jwt-access.strategy.js';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy.js';
+import { MailerModule } from '../common/mailer/mailer.module.js';
 
 @Module({
   imports: [
     UsersModule,
     PassportModule,
+    MailerModule,
     JwtModule.register({
       secret: process.env.JWT_ACCESS_SECRET,
       signOptions: {

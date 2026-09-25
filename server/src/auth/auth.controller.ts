@@ -16,6 +16,9 @@ import { LoginDto } from './dto/login.dto.js';
 import { AuthService } from './auth.service.js';
 import { JwtAccessGuard } from './guards/jwt-access.guard.js';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { VerifyOtpDto } from './dto/verify-otp.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
 
 const REFRESH_COOKIE_NAME = 'refreshToken';
 const REFRESH_COOKIE_MAX_AGE = Number(
@@ -149,5 +152,23 @@ export class AuthController {
     }
 
     return { deviceName, userAgent, ipAddress };
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  @Post('verify-otp')
+  @HttpCode(HttpStatus.OK)
+  verifyOtp(@Body() dto: VerifyOtpDto) {
+    return this.authService.verifyOtp(dto);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
   }
 }

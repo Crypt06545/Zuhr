@@ -135,4 +135,59 @@ export class UsersService {
       { $set: { tokenHash: newTokenHash, expiresAt: newExpiresAt } },
     );
   }
+
+  // users.service.ts এ যোগ করো (existing class এর ভিতরে)
+
+  async setPasswordResetOtp(email: string, otpHash: string, expiresAt: Date) {
+    await this.userModel.updateOne(
+      { email },
+      {
+        $set: {
+          passwordResetOtpHash: otpHash,
+          passwordResetOtpExpiresAt: expiresAt,
+          passwordResetAttempts: 0,
+        },
+      },
+    );
+  }
+
+  async getUserForPasswordReset(email: string) {
+    return this.userModel
+      .findOne({ email })
+      .select(
+        '+passwordResetOtpHash +passwordResetOtpExpiresAt +passwordResetAttempts',
+      );
+  }
+
+  async incrementResetAttempts(email: string) {
+    await this.userModel.updateOne(
+      { email },
+      { $inc: { passwordResetAttempts: 1 } },
+    );
+  }
+
+  async clearPasswordResetOtp(email: string) {
+    await this.userModel.updateOne(
+      { email },
+      {
+        $set: {
+          passwordResetOtpHash: null,
+          passwordResetOtpExpiresAt: null,
+          passwordResetAttempts: 0,
+        },
+      },
+    );
+  }
+
+  async updatePassword(userId: string, newPasswordHash: string) {
+    await this.userModel.updateOne(
+      { _id: userId },
+      {
+        $set: {
+          password: newPasswordHash,
+          passwordChangedAt: new Date(),
+        },
+      },
+    );
+  }
 }

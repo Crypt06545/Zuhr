@@ -72,6 +72,15 @@ export class User {
   @Prop({ type: [String], default: [], select: false })
   twoFactorRecoveryCodeHashes: string[];
 
+  @Prop({ type: String, default: null, select: false })
+  passwordResetOtpHash: string | null;
+
+  @Prop({ type: Date, default: null, select: false })
+  passwordResetOtpExpiresAt: Date | null;
+
+  @Prop({ type: Number, default: 0, select: false })
+  passwordResetAttempts: number;
+
   createdAt?: Date;
   updatedAt?: Date;
 }
