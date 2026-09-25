@@ -15,6 +15,7 @@ import crypto from 'crypto';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { VerifyOtpDto } from './dto/verify-otp.dto.js';
+import { ResendVerificationDto } from './dto/resend-verification.dto.js';
 
 @Injectable()
 export class AuthService {
@@ -34,8 +35,14 @@ export class AuthService {
       password: hash,
     });
 
+    // Verification email পাঠাচ্ছি
+    this.sendVerificationEmail(user.id, user.email).catch((error) => {
+      console.error('Failed to send verification email:', error);
+    });
+
     return {
-      message: 'User created successfully. Please login to continue.',
+      message:
+        'User created successfully. Please check your email to verify your account.',
       data: user,
     };
   }
@@ -58,16 +65,20 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password.');
     }
 
+    const requireVerification =
+      process.env.REQUIRE_EMAIL_VERIFICATION === 'true';
+
+    if (requireVerification && !user.emailVerifiedAt) {
+      throw new UnauthorizedException(
+        'Please verify your email before logging in. Check your inbox or request a new verification link.',
+      );
+    }
+
     const userId = user._id.toString();
 
-    // Device limit চেক করে পুরানো session সরানো
     const maxSessions = Number(process.env.MAX_ACTIVE_SESSIONS ?? 3);
-
-    console.log('maxSessions:', maxSessions); // ⚠️ যোগ করো
     await this.userService.enforceSessionLimit(userId, maxSessions);
-    console.log('enforceSessionLimit called'); // ⚠️ যোগ করো
-    // আগে session বানাই (id লাগবে refresh token payload এ),
-    // তারপর token generate করে session এ hash বসাবো
+
     const refreshExpiresAt = this.calculateExpiryDate(
       process.env.JWT_REFRESH_EXPIRES ?? '7d',
     );
@@ -106,6 +117,79 @@ export class AuthService {
     };
   }
 
+  // ─── Email Verification ───
+
+  async verifyEmail(token: string) {
+    let payload: { sub: string; purpose: string };
+
+    try {
+      payload = await this.jwtService.verifyAsync(token, {
+        secret: process.env.EMAIL_VERIFICATION_TOKEN_SECRET,
+      });
+    } catch {
+      throw new BadRequestException(
+        'Invalid or expired verification link. Please request a new one.',
+      );
+    }
+
+    if (payload.purpose !== 'email-verify') {
+      throw new BadRequestException('Invalid verification token.');
+    }
+
+    const user = await this.userService.getUserById(payload.sub);
+
+    if (!user) {
+      throw new BadRequestException('User not found.');
+    }
+
+    if (user.emailVerifiedAt) {
+      return { message: 'Email is already verified.' };
+    }
+
+    await this.userService.markEmailVerified(payload.sub);
+
+    return { message: 'Email verified successfully. You can now login.' };
+  }
+
+  async resendVerificationEmail(dto: ResendVerificationDto) {
+    const user = await this.userService.getUserByEmail(dto.email);
+
+    // এইখানেও email enumeration ঠেকাতে same message দিচ্ছি
+    if (!user) {
+      return {
+        message:
+          'If this email is registered, a verification link has been sent.',
+      };
+    }
+
+    if (user.emailVerifiedAt) {
+      return { message: 'This email is already verified.' };
+    }
+
+    await this.sendVerificationEmail(user._id.toString(), user.email);
+
+    return {
+      message:
+        'If this email is registered, a verification link has been sent.',
+    };
+  }
+
+  // ─── Helper ───
+
+  private async sendVerificationEmail(userId: string, email: string) {
+    const verificationToken = await this.jwtService.signAsync(
+      { sub: userId, purpose: 'email-verify' },
+      {
+        secret: process.env.EMAIL_VERIFICATION_TOKEN_SECRET,
+        expiresIn: (process.env.EMAIL_VERIFICATION_TOKEN_EXPIRES ||
+          '24h') as any,
+      },
+    );
+
+    const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+
+    await this.mailerService.sendVerificationEmail(email, verificationLink);
+  }
   // ─── Refresh Access Token ───
 
   async refreshTokens(
@@ -205,15 +289,12 @@ export class AuthService {
   async forgotPassword(dto: ForgotPasswordDto) {
     const user = await this.userService.getUserByEmail(dto.email);
 
-    // Security practice: user না থাকলেও same success message দিবো,
-    // যাতে কেউ email enumerate করে বুঝতে না পারে কোন email account এ registered আছে
     if (!user) {
       return {
         message: 'If this email is registered, an OTP has been sent.',
       };
     }
 
-    // 6-digit random OTP বানাচ্ছি
     const otp = crypto.randomInt(100000, 999999).toString();
     const otpHash = await bcrypt.hash(otp, 10);
 
@@ -222,7 +303,9 @@ export class AuthService {
 
     await this.userService.setPasswordResetOtp(dto.email, otpHash, expiresAt);
 
-    await this.mailerService.sendOtpEmail(dto.email, otp);
+    this.mailerService.sendOtpEmail(dto.email, otp).catch((error) => {
+      console.error('Failed to send OTP email:', error);
+    });
 
     return {
       message: 'If this email is registered, an OTP has been sent.',
@@ -263,10 +346,8 @@ export class AuthService {
       throw new BadRequestException('Invalid OTP.');
     }
 
-    // OTP সঠিক হলে ব্যবহার করা শেষ, সাথে সাথে clear করে দিচ্ছি (one-time use)
     await this.userService.clearPasswordResetOtp(dto.email);
 
-    // এখন একটা short-lived resetToken দিচ্ছি, শুধু password reset করার জন্যই valid
     const resetToken = await this.jwtService.signAsync(
       { sub: user._id.toString(), purpose: 'password-reset' },
       {
@@ -294,8 +375,6 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired reset token.');
     }
 
-    // এই টোকেন শুধুই password-reset এর জন্য বানানো হয়েছিল কিনা যাচাই করছি,
-    // যাতে অন্য কোনো JWT (access/refresh) দিয়ে কেউ password reset করতে না পারে
     if (payload.purpose !== 'password-reset') {
       throw new UnauthorizedException('Invalid reset token.');
     }
@@ -303,8 +382,6 @@ export class AuthService {
     const newPasswordHash = await bcrypt.hash(dto.newPassword, 12);
     await this.userService.updatePassword(payload.sub, newPasswordHash);
 
-    // Password change হলে সব device থেকে logout করে দেওয়া security best practice —
-    // কেউ যদি password compromise করেও থাকে, নতুন password সেট হওয়ার পর সব session invalid হয়ে যাবে
     await this.userService.revokeAllSessions(payload.sub);
 
     return {

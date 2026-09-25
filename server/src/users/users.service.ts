@@ -190,4 +190,15 @@ export class UsersService {
       },
     );
   }
+
+  async markEmailVerified(userId: string) {
+    await this.userModel.updateOne(
+      { _id: userId },
+      { $set: { emailVerifiedAt: new Date() } },
+    );
+  }
+
+  async getUserById(userId: string) {
+    return this.userModel.findById(userId);
+  }
 }
