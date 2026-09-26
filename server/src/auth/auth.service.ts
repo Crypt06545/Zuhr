@@ -137,7 +137,7 @@ export class AuthService {
           user.email,
           user.name,
           deviceInfo,
-          false,
+          true,
         );
       }
     }

@@ -232,6 +232,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const deviceInfo = this.extractDeviceInfo(req);
+    console.log('🔍 DEBUG dto received:', dto); // ⚠️ সাময়িক — পরে মুছে ফেলবে
     const result = await this.authService.verifyTwoFactorLogin(dto, deviceInfo);
 
     this.setRefreshCookie(res, result.refreshToken);
@@ -245,7 +246,6 @@ export class AuthController {
       data: { accessToken: result.accessToken, user: result.user },
     };
   }
-
   @Post('2fa/verify-recovery')
   @HttpCode(HttpStatus.OK)
   async verifyRecoveryCode(
@@ -293,8 +293,15 @@ export class AuthController {
 
   private extractDeviceInfo(req: Request) {
     const userAgent = req.headers['user-agent'] || null;
-    const ipAddress = (req.ip || req.socket.remoteAddress || null) as
+    let ipAddress = (req.ip || req.socket.remoteAddress || null) as
       string | null;
+
+    // IPv6 loopback/mapped address কে readable IPv4
+    if (ipAddress === '::1') {
+      ipAddress = '127.0.0.1';
+    } else if (ipAddress?.startsWith('::ffff:')) {
+      ipAddress = ipAddress.replace('::ffff:', '');
+    }
 
     let deviceName = 'Unknown Device';
     if (userAgent) {

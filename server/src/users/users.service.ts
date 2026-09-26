@@ -88,7 +88,7 @@ export class UsersService {
   async enforceSessionLimit(userId: string, maxSessions: number) {
     const activeSessions = await this.refreshTokenModel
       .find({
-        user: new Types.ObjectId(userId), // ⚠️ এইখানে convert করলাম
+        user: new Types.ObjectId(userId),
         isRevoked: false,
         expiresAt: { $gt: new Date() },
       })
@@ -111,6 +111,7 @@ export class UsersService {
       .findById(sessionId)
       .select('+tokenHash +trustedDeviceTokenHash');
   }
+
   async revokeSession(sessionId: string) {
     await this.refreshTokenModel.updateOne(
       { _id: sessionId },
@@ -129,7 +130,7 @@ export class UsersService {
   async getActiveSessions(userId: string) {
     return this.refreshTokenModel
       .find({
-        user: new Types.ObjectId(userId), // ⚠️ ফিক্স
+        user: new Types.ObjectId(userId),
         isRevoked: false,
         expiresAt: { $gt: new Date() },
       })
@@ -145,6 +146,8 @@ export class UsersService {
       {
         $set: {
           isRevoked: true,
+          trustedDeviceTokenHash: null,
+          trustedDeviceExpiresAt: null,
         },
       },
     );
@@ -160,8 +163,6 @@ export class UsersService {
       { $set: { tokenHash: newTokenHash, expiresAt: newExpiresAt } },
     );
   }
-
-  // users.service.ts এ যোগ করো (existing class এর ভিতরে)
 
   async setPasswordResetOtp(email: string, otpHash: string, expiresAt: Date) {
     await this.userModel.updateOne(
@@ -226,7 +227,6 @@ export class UsersService {
   async getUserById(userId: string) {
     return this.userModel.findById(userId);
   }
-  // users.service.ts এ যোগ করো
 
   async getUserForTwoFactorSetup(userId: string) {
     return this.userModel
@@ -264,6 +264,16 @@ export class UsersService {
         },
       },
     );
+
+    await this.refreshTokenModel.updateMany(
+      { user: new Types.ObjectId(userId) },
+      {
+        $set: {
+          trustedDeviceTokenHash: null,
+          trustedDeviceExpiresAt: null,
+        },
+      },
+    );
   }
 
   async getUserForRecoveryVerification(userId: string) {
@@ -287,9 +297,7 @@ export class UsersService {
       .findOne({
         user: new Types.ObjectId(userId),
         trustedDeviceTokenHash,
-        trustedDeviceExpiresAt: {
-          $gt: new Date(),
-        },
+        trustedDeviceExpiresAt: { $gt: new Date() },
       })
       .select('+trustedDeviceTokenHash');
   }
