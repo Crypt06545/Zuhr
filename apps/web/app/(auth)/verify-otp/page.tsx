@@ -20,6 +20,12 @@ import {
   shake,
   useAuthEntrance,
 } from "@/hooks/UseAuthAnimation";
+import {
+  useVerifyOtp,
+  useForgotPassword,
+  getErrorMessage,
+} from "@/hooks/use-auth";
+import { toast } from "sonner";
 
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
@@ -30,10 +36,10 @@ const VerifyOtpForm = () => {
 
   const router = useRouter();
   const params = useSearchParams();
-
   const email = params.get("email");
-  // "register" -> go to login after verifying, otherwise continue to reset password
-  const flow = params.get("flow") === "register" ? "register" : "reset";
+
+  const verifyOtp = useVerifyOtp();
+  const forgotPassword = useForgotPassword();
 
   const [digits, setDigits] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [error, setError] = useState("");
@@ -42,10 +48,8 @@ const VerifyOtpForm = () => {
 
   useAuthEntrance(container);
 
-  /* Resend countdown */
   useEffect(() => {
     if (seconds <= 0) return;
-
     const id = setTimeout(() => setSeconds((s) => s - 1), 1000);
     return () => clearTimeout(id);
   }, [seconds]);
@@ -59,10 +63,8 @@ const VerifyOtpForm = () => {
       return next;
     });
 
-  /* Fill several boxes at once (paste / autofill) */
   const fillFrom = (start: number, value: string) => {
     const chars = value.slice(0, OTP_LENGTH - start).split("");
-
     setDigits((prev) => {
       const next = [...prev];
       chars.forEach((char, i) => {
@@ -70,7 +72,6 @@ const VerifyOtpForm = () => {
       });
       return next;
     });
-
     setError("");
     focusInput(Math.min(start + chars.length, OTP_LENGTH - 1));
   };
@@ -82,7 +83,6 @@ const VerifyOtpForm = () => {
       updateDigit(index, "");
       return;
     }
-
     if (value.length > 1) {
       fillFrom(index, value);
       return;
@@ -98,7 +98,6 @@ const VerifyOtpForm = () => {
         { scale: 1, duration: 0.2, ease: "power2.out" },
       );
     }
-
     if (index < OTP_LENGTH - 1) focusInput(index + 1);
   };
 
@@ -108,12 +107,10 @@ const VerifyOtpForm = () => {
       updateDigit(index - 1, "");
       focusInput(index - 1);
     }
-
     if (e.key === "ArrowLeft" && index > 0) {
       e.preventDefault();
       focusInput(index - 1);
     }
-
     if (e.key === "ArrowRight" && index < OTP_LENGTH - 1) {
       e.preventDefault();
       focusInput(index + 1);
@@ -122,17 +119,13 @@ const VerifyOtpForm = () => {
 
   const handlePaste = (index: number, e: ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-
     const pasted = e.clipboardData.getData("text").replace(/\D/g, "");
     if (!pasted) return;
-
-    // A full code always fills from the first box
     fillFrom(pasted.length >= OTP_LENGTH ? 0 : index, pasted);
   };
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
     const code = digits.join("");
 
     if (code.length < OTP_LENGTH) {
@@ -141,49 +134,56 @@ const VerifyOtpForm = () => {
       return;
     }
 
+    if (!email) {
+      setError("Email is missing. Please restart the process.");
+      toast.error("Email is missing. Please restart the process.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      console.log({ email, code });
-
-      // TODO: Connect NestJS verify-OTP API (on failure: setError + shake)
-
-      if (flow === "register") {
-        router.push("/login");
-      } else {
-        // TODO: pass the reset token returned by the API to the next page
-        router.push("/reset-password");
-      }
+      const res = await verifyOtp.mutateAsync({ email, otp: code });
+      sessionStorage.setItem("reset_token", res.data.resetToken);
+      toast.success("Code verified successfully.");
+      router.push("/reset-password");
+    } catch (err) {
+      const message = getErrorMessage(err, "Invalid or expired code.");
+      setError(message);
+      toast.error(message);
+      shake(container.current?.querySelectorAll("[data-otp]"));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const onResend = () => {
-    if (seconds > 0) return;
+  const onResend = async () => {
+    if (seconds > 0 || !email) return;
 
-    // TODO: Connect NestJS resend-OTP API
-
-    setSeconds(RESEND_SECONDS);
-    setDigits(Array(OTP_LENGTH).fill(""));
-    setError("");
-    focusInput(0);
+    try {
+      await forgotPassword.mutateAsync(email);
+      toast.success("A new code has been sent.");
+    } catch {
+      // এইখানেও security practice অনুযায়ী error দেখাই না
+    } finally {
+      setSeconds(RESEND_SECONDS);
+      setDigits(Array(OTP_LENGTH).fill(""));
+      setError("");
+      focusInput(0);
+    }
   };
 
   const timer = `0:${String(seconds).padStart(2, "0")}`;
 
   return (
     <div ref={container} className="w-full max-w-[420px]">
-      {/* Heading */}
       <div data-anim="heading" className="mb-8">
         <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#07372C]/10 text-[#07372C]">
           <MailCheck className="h-6 w-6" />
         </div>
-
         <h1 className="text-[30px] font-semibold tracking-[-0.03em] text-foreground">
           Verify your email
         </h1>
-
         <p className="mt-2 text-[15px] leading-6 text-muted-foreground">
           We sent a {OTP_LENGTH}-digit code to{" "}
           <span className="font-medium text-foreground">
@@ -193,7 +193,6 @@ const VerifyOtpForm = () => {
         </p>
       </div>
 
-      {/* Form */}
       <form onSubmit={onSubmit} noValidate className="space-y-5">
         <div data-form-item className="space-y-2">
           <div
@@ -223,11 +222,9 @@ const VerifyOtpForm = () => {
               />
             ))}
           </div>
-
           <FieldError message={error} />
         </div>
 
-        {/* Submit */}
         <div data-form-item>
           <Button
             type="submit"
@@ -246,7 +243,6 @@ const VerifyOtpForm = () => {
         </div>
       </form>
 
-      {/* Resend */}
       <p
         data-form-item
         className="mt-8 text-center text-sm text-muted-foreground"
@@ -267,10 +263,9 @@ const VerifyOtpForm = () => {
         )}
       </p>
 
-      {/* Back */}
       <p data-form-item className="mt-4 text-center">
         <Link
-          href={flow === "register" ? "/register" : "/forgot-password"}
+          href="/forgot-password"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -281,7 +276,6 @@ const VerifyOtpForm = () => {
   );
 };
 
-/* useSearchParams needs a Suspense boundary for production builds */
 const VerifyOtpPage = () => (
   <Suspense>
     <VerifyOtpForm />

@@ -13,6 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldError } from "@/components/common/FieldError";
 import { shake, useAuthEntrance } from "@/hooks/UseAuthAnimation";
+import { useForgotPassword } from "@/hooks/use-auth";
+import { toast } from "sonner";
 
 const forgotPasswordSchema = z.object({
   email: z
@@ -26,6 +28,7 @@ type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 const ForgotPasswordPage = () => {
   const container = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const forgotPassword = useForgotPassword();
 
   useAuthEntrance(container);
 
@@ -35,49 +38,43 @@ const ForgotPasswordPage = () => {
     formState: { errors, isSubmitting },
   } = useForm<ForgotPasswordFormValues>({
     resolver: zodResolver(forgotPasswordSchema),
-    defaultValues: {
-      email: "",
-    },
+    defaultValues: { email: "" },
   });
 
   const onSubmit = async (data: ForgotPasswordFormValues) => {
-    console.log(data);
-
-    // TODO: Connect NestJS "send reset code" API
-
-    const params = new URLSearchParams({ email: data.email, flow: "reset" });
-    router.push(`/verify-otp?${params.toString()}`);
+    try {
+      await forgotPassword.mutateAsync(data.email);
+      toast.success("If this email is registered, a code has been sent.");
+    } catch {
+      // Security practice অনুযায়ী error দেখাই না, backend ও সবসময় success বলে
+    } finally {
+      const params = new URLSearchParams({ email: data.email });
+      router.push(`/verify-otp?${params.toString()}`);
+    }
   };
-
   const onInvalid = () =>
     shake(container.current?.querySelectorAll("input[aria-invalid='true']"));
 
   return (
     <div ref={container} className="w-full max-w-[420px]">
-      {/* Heading */}
       <div data-anim="heading" className="mb-8">
         <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#07372C]/10 text-[#07372C]">
           <KeyRound className="h-6 w-6" />
         </div>
-
         <h1 className="text-[30px] font-semibold tracking-[-0.03em] text-foreground">
           Forgot password?
         </h1>
-
         <p className="mt-2 text-[15px] leading-6 text-muted-foreground">
           Enter the email linked to your account and we&apos;ll send you a
           6-digit code to reset your password.
         </p>
       </div>
 
-      {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-5">
-        {/* Email */}
         <div data-form-item className="space-y-2">
           <Label htmlFor="email" className="text-sm font-medium">
             Email address
           </Label>
-
           <Input
             id="email"
             type="email"
@@ -87,11 +84,9 @@ const ForgotPasswordPage = () => {
             className="h-11 rounded-lg px-3.5 shadow-none transition-shadow focus-visible:ring-2"
             {...register("email")}
           />
-
           <FieldError message={errors.email?.message} />
         </div>
 
-        {/* Submit */}
         <div data-form-item>
           <Button
             type="submit"
@@ -110,7 +105,6 @@ const ForgotPasswordPage = () => {
         </div>
       </form>
 
-      {/* Back */}
       <p data-form-item className="mt-8 text-center">
         <Link
           href="/login"
