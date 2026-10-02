@@ -3,6 +3,8 @@ import 'dotenv/config';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { getQueueToken } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
 
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -13,6 +15,7 @@ import { AppModule } from './app.module.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor.js';
 import { setupSwagger } from './common/swagger/swagger.config.js';
+import { setupBullBoard } from './queue/bull-board.js';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -70,6 +73,13 @@ async function bootstrap() {
     setupSwagger(app);
   }
 
+  // Bull Board Dashboard — শুধু non-production এ, queue job দেখতে
+  if (process.env.NODE_ENV !== 'production') {
+    const emailQueue = app.get<Queue>(getQueueToken('email-queue'));
+    const serverAdapter = setupBullBoard(emailQueue);
+    app.use('/admin/queues', serverAdapter.getRouter());
+  }
+
   // Graceful shutdown
   app.enableShutdownHooks();
 
@@ -83,6 +93,10 @@ async function bootstrap() {
   console.log(`🚀 Server running on port ${port} (${mode})`);
   console.log(`🔗 API base: http://localhost:${port}/api/v1`);
   console.log(`📄 API docs: http://localhost:${port}/api/docs`);
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`📊 Queue dashboard: http://localhost:${port}/admin/queues`);
+  }
 }
 
 await bootstrap();
