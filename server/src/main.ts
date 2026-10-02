@@ -10,10 +10,9 @@ import hpp from 'hpp';
 import morgan from 'morgan';
 
 import { AppModule } from './app.module.js';
-
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
-
 import { ResponseInterceptor } from './common/interceptors/response.interceptor.js';
+import { setupSwagger } from './common/swagger/swagger.config.js';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -44,6 +43,8 @@ async function bootstrap() {
   app.enableCors({
     origin: process.env.FRONTEND_URL,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
 
   // DTO validation
@@ -52,6 +53,9 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
     }),
   );
 
@@ -60,6 +64,11 @@ async function bootstrap() {
 
   // Global error response
   app.useGlobalFilters(new AllExceptionsFilter());
+
+  // Swagger documentation
+  if (process.env.NODE_ENV !== 'production') {
+    setupSwagger(app);
+  }
 
   // Graceful shutdown
   app.enableShutdownHooks();
@@ -72,8 +81,8 @@ async function bootstrap() {
     process.env.NODE_ENV === 'production' ? 'PRODUCTION' : 'DEVELOPMENT';
 
   console.log(`🚀 Server running on port ${port} (${mode})`);
-
   console.log(`🔗 API base: http://localhost:${port}/api/v1`);
+  console.log(`📄 API docs: http://localhost:${port}/api/docs`);
 }
 
 await bootstrap();

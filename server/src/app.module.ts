@@ -6,9 +6,11 @@ import './redis/redis.js';
 import { MongoDbModule } from './database/mongodb.js';
 import { UsersModule } from './users/users.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { QueueModule } from './queue/queue.module.js';
+// app.module.ts
 
 @Module({
-  imports: [MongoDbModule, UsersModule, AuthModule],
+  imports: [MongoDbModule, UsersModule, AuthModule, QueueModule],
   controllers: [AppController],
   providers: [AppService],
 })

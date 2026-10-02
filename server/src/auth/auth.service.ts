@@ -27,6 +27,8 @@ import {
   REFRESH_TOKEN_TTL_MS,
   TRUSTED_DEVICE_TTL_MS,
 } from '../constants/auth.constants.js';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 // ─── Login Result Types ───
 
@@ -53,10 +55,10 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly mailerService: MailerService,
     private readonly twoFactorService: TwoFactorService,
+    @InjectQueue('email-queue') private readonly emailQueue: Queue,
   ) {}
 
   // ─── Register ───
-
   async register(registerDto: RegisterDto) {
     const hash = await bcrypt.hash(registerDto.password, 12);
 
@@ -65,9 +67,27 @@ export class AuthService {
       password: hash,
     });
 
-    this.sendVerificationEmail(user.id, user.email).catch((error) => {
-      console.error('Failed to send verification email:', error);
-    });
+    const verificationToken = await this.jwtService.signAsync(
+      { sub: user.id, purpose: 'email-verify' },
+      {
+        secret: process.env.EMAIL_VERIFICATION_TOKEN_SECRET,
+        expiresIn: (process.env.EMAIL_VERIFICATION_TOKEN_EXPIRES ||
+          '24h') as any,
+      },
+    );
+
+    const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+
+    await this.emailQueue.add(
+      'send-verification',
+      { email: user.email, link: verificationLink },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    );
 
     return {
       message:
@@ -388,9 +408,16 @@ export class AuthService {
 
     await this.userService.setPasswordResetOtp(dto.email, otpHash, expiresAt);
 
-    this.mailerService.sendOtpEmail(dto.email, otp).catch((error) => {
-      console.error('Failed to send OTP email:', error);
-    });
+    await this.emailQueue.add(
+      'send-otp',
+      { email: dto.email, otp },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    );
 
     return {
       message: 'If this email is registered, an OTP has been sent.',

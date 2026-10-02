@@ -9,6 +9,7 @@ import { JwtAccessStrategy } from './strategies/jwt-access.strategy.js';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy.js';
 import { MailerModule } from '../common/mailer/mailer.module.js';
 import { TwoFactorService } from './two-factor.service.js';
+import { BullModule } from '@nestjs/bullmq';
 
 @Module({
   imports: [
@@ -20,6 +21,9 @@ import { TwoFactorService } from './two-factor.service.js';
       signOptions: {
         expiresIn: (process.env.JWT_ACCESS_EXPIRES || '15m') as any,
       },
+    }),
+    BullModule.registerQueue({
+      name: 'email-queue',
     }),
   ],
   controllers: [AuthController],

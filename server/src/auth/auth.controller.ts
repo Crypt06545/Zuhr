@@ -13,6 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { AuthService } from './auth.service.js';
@@ -26,7 +27,6 @@ import { Enable2faDto } from './dto/enable-2fa.dto.js';
 import { Disable2faDto } from './dto/disable-2fa.dto.js';
 import { Verify2faLoginDto } from './dto/verify-2fa-login.dto.js';
 import { VerifyRecoveryCodeDto } from './dto/verify-recovery-code.dto.js';
-// ⚠️ path তোমার project অনুযায়ী ঠিক করে নিও
 import {
   REFRESH_TOKEN_TTL_MS,
   TRUSTED_DEVICE_TTL_MS,
@@ -37,16 +37,19 @@ const REFRESH_COOKIE_MAX_AGE = REFRESH_TOKEN_TTL_MS;
 const TRUSTED_DEVICE_COOKIE_NAME = 'trustedDevice';
 const TRUSTED_DEVICE_MAX_AGE = TRUSTED_DEVICE_TTL_MS;
 
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @ApiOperation({ summary: 'Register a new user' })
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
   }
 
+  @ApiOperation({ summary: 'Login with email and password' })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(
@@ -89,6 +92,8 @@ export class AuthController {
     };
   }
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Refresh access token using refresh token cookie' })
   @UseGuards(JwtRefreshGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
@@ -122,6 +127,8 @@ export class AuthController {
     };
   }
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Logout from the current device' })
   @UseGuards(JwtRefreshGuard)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
@@ -133,6 +140,8 @@ export class AuthController {
     return result;
   }
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Logout from all devices' })
   @UseGuards(JwtAccessGuard)
   @Post('logout-all')
   @HttpCode(HttpStatus.OK)
@@ -148,6 +157,8 @@ export class AuthController {
     return result;
   }
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Get all active sessions/devices' })
   @UseGuards(JwtAccessGuard)
   @Get('sessions')
   getSessions(@Req() req: Request) {
@@ -155,6 +166,8 @@ export class AuthController {
     return this.authService.getActiveSessions(user.userId);
   }
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Get current user profile' })
   @UseGuards(JwtAccessGuard)
   @Get('me')
   getProfile(@Req() req: Request) {
@@ -163,18 +176,21 @@ export class AuthController {
 
   // ─── Password Reset ───
 
+  @ApiOperation({ summary: 'Request a password reset OTP via email' })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
   }
 
+  @ApiOperation({ summary: 'Verify the password reset OTP' })
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
   verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyOtp(dto);
   }
 
+  @ApiOperation({ summary: 'Reset password using the verified reset token' })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   resetPassword(@Body() dto: ResetPasswordDto) {
@@ -183,6 +199,7 @@ export class AuthController {
 
   // ─── Email Verification ───
 
+  @ApiOperation({ summary: 'Verify email using the token sent via email' })
   @Get('verify-email')
   @HttpCode(HttpStatus.OK)
   verifyEmail(@Query('token') token?: string) {
@@ -192,6 +209,7 @@ export class AuthController {
     return this.authService.verifyEmail(token);
   }
 
+  @ApiOperation({ summary: 'Resend the email verification link' })
   @Post('resend-verification')
   @HttpCode(HttpStatus.OK)
   resendVerification(@Body() dto: ResendVerificationDto) {
@@ -200,6 +218,8 @@ export class AuthController {
 
   // ─── Two-Factor Authentication ───
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Generate a 2FA secret and QR code' })
   @UseGuards(JwtAccessGuard)
   @Post('2fa/generate')
   @HttpCode(HttpStatus.OK)
@@ -208,6 +228,8 @@ export class AuthController {
     return this.authService.generateTwoFactorSecret(user.userId, user.email);
   }
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Enable 2FA after verifying the setup code' })
   @UseGuards(JwtAccessGuard)
   @Post('2fa/enable')
   @HttpCode(HttpStatus.OK)
@@ -216,6 +238,8 @@ export class AuthController {
     return this.authService.enableTwoFactor(user.userId, dto);
   }
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Disable 2FA (requires password + code)' })
   @UseGuards(JwtAccessGuard)
   @Post('2fa/disable')
   @HttpCode(HttpStatus.OK)
@@ -224,6 +248,7 @@ export class AuthController {
     return this.authService.disableTwoFactor(user.userId, dto);
   }
 
+  @ApiOperation({ summary: 'Complete login using a 2FA TOTP code' })
   @Post('2fa/verify-login')
   @HttpCode(HttpStatus.OK)
   async verifyTwoFactorLogin(
@@ -232,7 +257,6 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const deviceInfo = this.extractDeviceInfo(req);
-    console.log('🔍 DEBUG dto received:', dto); // ⚠️ সাময়িক — পরে মুছে ফেলবে
     const result = await this.authService.verifyTwoFactorLogin(dto, deviceInfo);
 
     this.setRefreshCookie(res, result.refreshToken);
@@ -246,6 +270,8 @@ export class AuthController {
       data: { accessToken: result.accessToken, user: result.user },
     };
   }
+
+  @ApiOperation({ summary: 'Complete login using a 2FA recovery code' })
   @Post('2fa/verify-recovery')
   @HttpCode(HttpStatus.OK)
   async verifyRecoveryCode(
@@ -296,7 +322,6 @@ export class AuthController {
     let ipAddress = (req.ip || req.socket.remoteAddress || null) as
       string | null;
 
-    // IPv6 loopback/mapped address কে readable IPv4
     if (ipAddress === '::1') {
       ipAddress = '127.0.0.1';
     } else if (ipAddress?.startsWith('::ffff:')) {
