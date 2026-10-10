@@ -58,8 +58,12 @@ const ResetSuccess = () => {
   return (
     <div ref={container} className="w-full max-w-[420px]">
       <div data-anim="heading" className="mb-8">
-        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-[#07372C]">
-          <Check data-check className="h-6 w-6 text-white" strokeWidth={3} />
+        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-primary">
+          <Check
+            data-check
+            className="h-6 w-6 text-primary-foreground"
+            strokeWidth={3}
+          />
         </div>
         <h1 className="text-[30px] font-semibold tracking-[-0.03em] text-foreground">
           Password updated
@@ -73,7 +77,7 @@ const ResetSuccess = () => {
       <div data-form-item>
         <Link
           href="/login"
-          className="flex h-11 w-full items-center justify-center rounded-lg bg-[#07372C] text-sm font-medium text-white shadow-sm transition-all hover:bg-[#062E26] active:scale-[0.99]"
+          className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99]"
         >
           Back to sign in
         </Link>
@@ -139,7 +143,7 @@ const ResetPasswordPage = () => {
   return (
     <div ref={container} className="w-full max-w-[420px]">
       <div data-anim="heading" className="mb-8">
-        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#07372C]/10 text-[#07372C]">
+        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/15 text-accent-foreground">
           <LockKeyhole className="h-6 w-6" />
         </div>
         <h1 className="text-[30px] font-semibold tracking-[-0.03em] text-foreground">
@@ -185,7 +189,7 @@ const ResetPasswordPage = () => {
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="h-11 w-full rounded-lg bg-[#07372C] text-sm font-medium text-white shadow-sm transition-all hover:bg-[#062E26] active:scale-[0.99]"
+            className="h-11 w-full rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99]"
           >
             {isSubmitting ? (
               <>

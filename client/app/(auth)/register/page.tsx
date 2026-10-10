@@ -52,7 +52,7 @@ const CheckEmailNotice = ({ email }: { email: string }) => {
   return (
     <div ref={container} className="w-full max-w-[420px]">
       <div data-anim="heading" className="mb-8">
-        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#07372C]/10 text-[#07372C]">
+        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/15 text-accent-foreground">
           <MailCheck className="h-6 w-6" />
         </div>
         <h1 className="text-[30px] font-semibold tracking-[-0.03em] text-foreground">
@@ -68,7 +68,7 @@ const CheckEmailNotice = ({ email }: { email: string }) => {
       <div data-form-item>
         <Link
           href="/login"
-          className="flex h-11 w-full items-center justify-center rounded-lg bg-[#07372C] text-sm font-medium text-white shadow-sm transition-all hover:bg-[#062E26] active:scale-[0.99]"
+          className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99]"
         >
           Back to sign in
         </Link>
@@ -203,7 +203,7 @@ const RegisterPage = () => {
             <input
               id="terms"
               type="checkbox"
-              className="mt-0.5 h-4 w-4 rounded border-input accent-[#07372C]"
+              className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
               {...register("terms")}
             />
             <Label
@@ -238,7 +238,7 @@ const RegisterPage = () => {
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="h-11 w-full rounded-lg bg-[#07372C] text-sm font-medium text-white shadow-sm transition-all hover:bg-[#062E26] active:scale-[0.99]"
+            className="h-11 w-full rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99]"
           >
             {isSubmitting ? (
               <>
@@ -278,7 +278,7 @@ const RegisterPage = () => {
         Already have an account?{" "}
         <Link
           href="/login"
-          className="font-medium text-[#07372C] underline-offset-4 hover:underline"
+          className="font-medium text-accent-foreground underline-offset-4 hover:underline"
         >
           Sign in
         </Link>

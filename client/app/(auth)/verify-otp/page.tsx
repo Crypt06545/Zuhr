@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import type {
   ClipboardEvent,
   ChangeEvent,
@@ -30,13 +30,11 @@ import { toast } from "sonner";
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
 
-const VerifyOtpForm = () => {
+const VerifyOtpForm = ({ email }: { email: string }) => {
   const container = useRef<HTMLDivElement>(null);
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
 
   const router = useRouter();
-  const params = useSearchParams();
-  const email = params.get("email");
 
   const verifyOtp = useVerifyOtp();
   const forgotPassword = useForgotPassword();
@@ -126,6 +124,8 @@ const VerifyOtpForm = () => {
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     const code = digits.join("");
 
     if (code.length < OTP_LENGTH) {
@@ -134,17 +134,12 @@ const VerifyOtpForm = () => {
       return;
     }
 
-    if (!email) {
-      setError("Email is missing. Please restart the process.");
-      toast.error("Email is missing. Please restart the process.");
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
       const res = await verifyOtp.mutateAsync({ email, otp: code });
       sessionStorage.setItem("reset_token", res.data.resetToken);
+      sessionStorage.removeItem("reset_email");
       toast.success("Code verified successfully.");
       router.push("/reset-password");
     } catch (err) {
@@ -158,7 +153,7 @@ const VerifyOtpForm = () => {
   };
 
   const onResend = async () => {
-    if (seconds > 0 || !email) return;
+    if (seconds > 0) return;
 
     try {
       await forgotPassword.mutateAsync(email);
@@ -178,7 +173,7 @@ const VerifyOtpForm = () => {
   return (
     <div ref={container} className="w-full max-w-[420px]">
       <div data-anim="heading" className="mb-8">
-        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#07372C]/10 text-[#07372C]">
+        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/15 text-accent-foreground">
           <MailCheck className="h-6 w-6" />
         </div>
         <h1 className="text-[30px] font-semibold tracking-[-0.03em] text-foreground">
@@ -186,10 +181,8 @@ const VerifyOtpForm = () => {
         </h1>
         <p className="mt-2 text-[15px] leading-6 text-muted-foreground">
           We sent a {OTP_LENGTH}-digit code to{" "}
-          <span className="font-medium text-foreground">
-            {email ?? "your email"}
-          </span>
-          . Enter it below to continue.
+          <span className="font-medium text-foreground">{email}</span>. Enter it
+          below to continue.
         </p>
       </div>
 
@@ -229,7 +222,7 @@ const VerifyOtpForm = () => {
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="h-11 w-full rounded-lg bg-[#07372C] text-sm font-medium text-white shadow-sm transition-all hover:bg-[#062E26] active:scale-[0.99]"
+            className="h-11 w-full rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99]"
           >
             {isSubmitting ? (
               <>
@@ -256,7 +249,7 @@ const VerifyOtpForm = () => {
           <button
             type="button"
             onClick={onResend}
-            className="font-medium text-[#07372C] underline-offset-4 hover:underline"
+            className="font-medium text-accent-foreground underline-offset-4 hover:underline"
           >
             Resend code
           </button>
@@ -276,10 +269,23 @@ const VerifyOtpForm = () => {
   );
 };
 
-const VerifyOtpPage = () => (
-  <Suspense>
-    <VerifyOtpForm />
-  </Suspense>
-);
+// Guard: forgot-password flow থেকে না এলে (email নাই) এই page এ থাকতে দেই না
+const VerifyOtpPage = () => {
+  const router = useRouter();
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem("reset_email");
+    if (!stored) {
+      router.replace("/forgot-password");
+      return;
+    }
+    setEmail(stored);
+  }, [router]);
+
+  if (!email) return null;
+
+  return <VerifyOtpForm email={email} />;
+};
 
 export default VerifyOtpPage;

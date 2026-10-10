@@ -65,7 +65,7 @@ const Verify2faPage = () => {
   return (
     <div className="w-full max-w-[420px]">
       <div className="mb-8">
-        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#07372C]/10 text-[#07372C]">
+        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/15 text-accent-foreground">
           <ShieldCheck className="h-6 w-6" />
         </div>
         <h1 className="text-[30px] font-semibold tracking-[-0.03em] text-foreground">
@@ -97,7 +97,7 @@ const Verify2faPage = () => {
             type="checkbox"
             checked={trustDevice}
             onChange={(e) => setTrustDevice(e.target.checked)}
-            className="h-4 w-4 rounded border-input accent-[#07372C]"
+            className="h-4 w-4 rounded border-input accent-primary"
           />
           <label
             htmlFor="trustDevice"
@@ -110,7 +110,7 @@ const Verify2faPage = () => {
         <Button
           type="submit"
           disabled={isSubmitting || code.length === 0}
-          className="h-11 w-full rounded-lg bg-[#07372C] text-sm font-medium text-white"
+          className="h-11 w-full rounded-lg bg-primary text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           {isSubmitting ? (
             <>
@@ -130,7 +130,7 @@ const Verify2faPage = () => {
           setCode("");
           setError("");
         }}
-        className="mt-6 w-full text-center text-sm font-medium text-[#07372C] underline-offset-4 hover:underline"
+        className="mt-6 w-full text-center text-sm font-medium text-accent-foreground underline-offset-4 hover:underline"
       >
         {recoveryMode
           ? "Use authenticator code instead"

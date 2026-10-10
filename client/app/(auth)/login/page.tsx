@@ -145,7 +145,7 @@ const LoginPage = () => {
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="h-11 w-full rounded-lg bg-[#07372C] text-sm font-medium text-white shadow-sm transition-all hover:bg-[#062E26] active:scale-[0.99]"
+            className="h-11 w-full rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99]"
           >
             {isSubmitting ? (
               <>
@@ -166,7 +166,7 @@ const LoginPage = () => {
         Don&apos;t have an account?{" "}
         <Link
           href="/register"
-          className="font-medium text-[#07372C] underline-offset-4 hover:underline"
+          className="font-medium text-accent-foreground underline-offset-4 hover:underline"
         >
           Create an account
         </Link>

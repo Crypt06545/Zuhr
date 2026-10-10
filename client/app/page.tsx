@@ -1,12 +1,12 @@
-import React from 'react'
+import Marquee from "@/components/common/Marquee";
+import React from "react";
 
 const HomePage = () => {
   return (
-    <div>
-      This is home page
-    </div>
-  )
-}
+    <main className="h-screen w-screen overflow-hidden">
+      <Marquee/>
+    </main>
+  );
+};
 
-export default HomePage
-
+export default HomePage;

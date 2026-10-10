@@ -48,8 +48,10 @@ const ForgotPasswordPage = () => {
     } catch {
       // Security practice অনুযায়ী error দেখাই না, backend ও সবসময় success বলে
     } finally {
-      const params = new URLSearchParams({ email: data.email });
-      router.push(`/verify-otp?${params.toString()}`);
+      // email URL এ না রেখে sessionStorage এ রাখি, আর পুরোনো reset_token clear করি
+      sessionStorage.removeItem("reset_token");
+      sessionStorage.setItem("reset_email", data.email);
+      router.push("/verify-otp");
     }
   };
   const onInvalid = () =>
@@ -58,7 +60,7 @@ const ForgotPasswordPage = () => {
   return (
     <div ref={container} className="w-full max-w-[420px]">
       <div data-anim="heading" className="mb-8">
-        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#07372C]/10 text-[#07372C]">
+        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/15 text-accent-foreground">
           <KeyRound className="h-6 w-6" />
         </div>
         <h1 className="text-[30px] font-semibold tracking-[-0.03em] text-foreground">
@@ -91,7 +93,7 @@ const ForgotPasswordPage = () => {
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="h-11 w-full rounded-lg bg-[#07372C] text-sm font-medium text-white shadow-sm transition-all hover:bg-[#062E26] active:scale-[0.99]"
+            className="h-11 w-full rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99]"
           >
             {isSubmitting ? (
               <>
