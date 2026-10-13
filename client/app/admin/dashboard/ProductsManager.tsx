@@ -13,35 +13,34 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { getErrorMessage } from "@/hooks/use-auth";
+import { deleteProduct, updateProduct } from "@/lib/api/mutations";
 import type { Product } from "@/lib/mock-products";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { ProductEditDialog } from "./ProductEditDialog";
 import {
-  getProductState,
-  PRODUCT_STATE_META,
-  type ProductState,
+  getStockState,
+  STOCK_STATE_META,
+  type StockState,
 } from "./ProductStatusBadge";
 import { ProductsTable } from "./ProductsTable";
 
-type Filter = "all" | ProductState;
+type Filter = "all" | StockState;
 
-const FILTERS: Filter[] = ["all", "active", "draft", "out_of_stock"];
+const FILTERS: Filter[] = ["all", "in_stock", "low_stock", "out_of_stock"];
 
-export const ProductsManager = ({
-  initialProducts,
-}: {
-  initialProducts: Product[];
-}) => {
-  const [products, setProducts] = useState(initialProducts);
+export const ProductsManager = ({ products }: { products: Product[] }) => {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [editing, setEditing] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState<Product | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products.filter((p) => {
-      const matchesFilter = filter === "all" || getProductState(p) === filter;
+      const matchesFilter =
+        filter === "all" || getStockState(p.stock) === filter;
       const matchesQuery =
         !q ||
         p.name.toLowerCase().includes(q) ||
@@ -51,19 +50,31 @@ export const ProductsManager = ({
     });
   }, [products, query, filter]);
 
-  const handleSave = (updated: Product) => {
-    // Local state only: call your API here, then update state on success
-    setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-    toast.success(`${updated.name} updated.`);
-    setEditing(null);
+  // Demo mode: the list does not change. After a real API call succeeds,
+  // call router.refresh() here so the page re-fetches the products.
+  const handleSave = async (updated: Product) => {
+    try {
+      await updateProduct(updated);
+      toast.success(`${updated.name} updated.`);
+      setEditing(null);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to update product."));
+    }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleting) return;
-    // Local state only: call your API here, then update state on success
-    setProducts((prev) => prev.filter((p) => p.id !== deleting.id));
-    toast.success(`${deleting.name} deleted.`);
-    setDeleting(null);
+    setIsDeleting(true);
+
+    try {
+      await deleteProduct(deleting.id);
+      toast.success(`${deleting.name} deleted.`);
+      setDeleting(null);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to delete product."));
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -97,7 +108,7 @@ export const ProductsManager = ({
                   variant={filter === item ? "default" : "outline"}
                   onClick={() => setFilter(item)}
                 >
-                  {item === "all" ? "All" : PRODUCT_STATE_META[item].label}
+                  {item === "all" ? "All" : STOCK_STATE_META[item].label}
                 </Button>
               ))}
             </div>
@@ -122,11 +133,12 @@ export const ProductsManager = ({
       <ConfirmDeleteDialog
         open={deleting !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleting(null);
+          if (!open && !isDeleting) setDeleting(null);
         }}
         title="Delete this product?"
         description={`${deleting?.name ?? "This product"} will be removed. This action cannot be undone.`}
         onConfirm={handleDelete}
+        isLoading={isDeleting}
       />
     </>
   );

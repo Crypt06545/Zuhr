@@ -1,3 +1,5 @@
+// src/app.module.ts
+
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -9,16 +11,19 @@ import { AuthModule } from './auth/auth.module.js';
 import { QueueModule } from './queue/queue.module.js';
 import { CategoriesModule } from './categories/categories.module.js';
 import { CloudinaryModule } from './common/cloudinary/cloudinary.module.js';
-// app.module.ts
+import { ProductsModule } from './products/products.module.js';
+import { RedisModule } from './common/redis/redis.module.js';
 
 @Module({
   imports: [
     MongoDbModule,
+    RedisModule,
     UsersModule,
     AuthModule,
     QueueModule,
     CategoriesModule,
     CloudinaryModule,
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

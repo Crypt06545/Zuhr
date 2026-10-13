@@ -6,7 +6,12 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { RegisterDto } from '../auth/dto/register.dto.js';
-import { User, UserDocument } from './schemas/user.schema.js';
+import {
+  User,
+  UserDocument,
+  UserStatus,
+  UserType,
+} from './schemas/user.schema.js';
 import {
   RefreshToken,
   RefreshTokenDocument,
@@ -175,6 +180,19 @@ export class UsersService {
         },
       },
     );
+  }
+  async getUserType(userId: string): Promise<UserType> {
+    const user = await this.userModel
+      .findById(userId)
+      .select('userType status')
+      .lean<{ userType?: UserType; status?: UserStatus }>()
+      .exec();
+
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      return UserType.USER; // suspended / inactive user ke admin treat korbo na
+    }
+
+    return user.userType ?? UserType.USER;
   }
 
   async getUserForPasswordReset(email: string) {

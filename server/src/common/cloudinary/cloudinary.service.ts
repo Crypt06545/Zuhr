@@ -14,6 +14,9 @@ export interface UploadedImage {
   publicId: string;
 }
 
+
+const UPLOAD_TIMEOUT_MS = 30_000;
+
 @Injectable()
 export class CloudinaryService {
   private readonly logger = new Logger(CloudinaryService.name);
@@ -118,6 +121,7 @@ export class CloudinaryService {
           resource_type: 'image',
           allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
           transformation: [{ width: 1000, height: 1000, crop: 'limit' }],
+          timeout: UPLOAD_TIMEOUT_MS,
         },
         (error, result) => {
           if (error || !result) {

@@ -1,27 +1,54 @@
 import { Badge } from "@/components/ui/badge";
-import type { Product } from "@/lib/mock-products";
+import { cn } from "@/lib/utils";
 
-export type ProductState = "active" | "draft" | "out_of_stock";
+export type StockState = "in_stock" | "low_stock" | "out_of_stock";
 
-export const PRODUCT_STATE_META: Record<
-  ProductState,
-  {
-    label: string;
-    variant: "default" | "secondary" | "outline" | "destructive";
-  }
+// Stock at or below this number counts as "Low stock"
+export const LOW_STOCK_THRESHOLD = 10;
+
+export const STOCK_STATE_META: Record<
+  StockState,
+  { label: string; className: string; dot: string }
 > = {
-  active: { label: "Active", variant: "default" },
-  draft: { label: "Draft", variant: "secondary" },
-  out_of_stock: { label: "Out of stock", variant: "destructive" },
+  in_stock: {
+    label: "In stock",
+    className:
+      "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-500/20",
+    dot: "bg-emerald-500",
+  },
+  low_stock: {
+    label: "Low stock",
+    className:
+      "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-400 dark:ring-amber-500/20",
+    dot: "bg-amber-500",
+  },
+  out_of_stock: {
+    label: "Out of stock",
+    className:
+      "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/10 dark:text-red-400 dark:ring-red-500/20",
+    dot: "bg-red-500",
+  },
 };
 
-export const getProductState = (product: Product): ProductState => {
-  if (product.status === "draft") return "draft";
-  if (product.stock === 0) return "out_of_stock";
-  return "active";
+export const getStockState = (stock: number): StockState => {
+  if (stock <= 0) return "out_of_stock";
+  if (stock <= LOW_STOCK_THRESHOLD) return "low_stock";
+  return "in_stock";
 };
 
-export const ProductStatusBadge = ({ state }: { state: ProductState }) => {
-  const { label, variant } = PRODUCT_STATE_META[state];
-  return <Badge variant={variant}>{label}</Badge>;
+export const StockBadge = ({ state }: { state: StockState }) => {
+  const { label, className, dot } = STOCK_STATE_META[state];
+
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "gap-1.5 rounded-full border-transparent px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset",
+        className,
+      )}
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />
+      {label}
+    </Badge>
+  );
 };

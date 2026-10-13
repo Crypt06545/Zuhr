@@ -10,29 +10,26 @@ import {
   Post,
   Query,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 
-import { CategoriesService } from './categories.service.js';
+import { Roles } from '../auth/decorators/roles.decorator.js';
+import { JwtAccessGuard } from '../auth/guards/jwt-access.guard.js';
+import { RolesGuard } from '../auth/guards/roles.guard.js';
+import { UserType } from '../users/schemas/user.schema.js';
+import { ImageUpload } from '../common/multer/multer.options.js';
 
+import { CategoriesService } from './categories.service.js';
 import { CreateCategoryDto } from './dto/create-category.dto.js';
 import { UpdateCategoryDto } from './dto/update-category.dto.js';
 import { CategoryQueryDto } from './dto/category-query.dto.js';
-
-import { ImageUpload } from '../common/multer/multer.options.js';
 
 @Controller('categories')
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
-  @Post()
-  @UseInterceptors(ImageUpload())
-  create(
-    @Body() dto: CreateCategoryDto,
-    @UploadedFile() file?: Express.Multer.File,
-  ) {
-    return this.categoriesService.create(dto, file);
-  }
+  // ───────── Public reads ─────────
 
   @Get()
   findAll(@Query() query: CategoryQueryDto) {
@@ -49,6 +46,21 @@ export class CategoriesController {
     return this.categoriesService.findOne(id);
   }
 
+  // ───────── Admin only ─────────
+
+  @UseGuards(JwtAccessGuard, RolesGuard)
+  @Roles(UserType.ADMIN)
+  @Post()
+  @UseInterceptors(ImageUpload())
+  create(
+    @Body() dto: CreateCategoryDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.categoriesService.create(dto, file);
+  }
+
+  @UseGuards(JwtAccessGuard, RolesGuard)
+  @Roles(UserType.ADMIN)
   @Patch(':id')
   @UseInterceptors(ImageUpload())
   update(
@@ -59,6 +71,8 @@ export class CategoriesController {
     return this.categoriesService.update(id, dto, file);
   }
 
+  @UseGuards(JwtAccessGuard, RolesGuard)
+  @Roles(UserType.ADMIN)
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.categoriesService.remove(id);

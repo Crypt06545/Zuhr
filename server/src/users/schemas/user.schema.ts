@@ -10,7 +10,6 @@ export enum UserStatus {
 export enum UserType {
   USER = 'User',
   ADMIN = 'Admin',
-  SELLER = 'Seller',
 }
 
 @Schema({ collection: 'users', timestamps: true, versionKey: false })

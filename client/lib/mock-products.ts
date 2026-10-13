@@ -1,12 +1,9 @@
-export type ProductStatus = "active" | "draft";
-
 export interface Product {
   id: string;
   name: string;
   category: string;
   price: number;
   stock: number;
-  status: ProductStatus;
 }
 
 // Mock data: replace with your real API response later
@@ -17,7 +14,6 @@ export const PRODUCTS: Product[] = [
     category: "Oud",
     price: 3200,
     stock: 24,
-    status: "active",
   },
   {
     id: "P-002",
@@ -25,7 +21,6 @@ export const PRODUCTS: Product[] = [
     category: "Floral",
     price: 1800,
     stock: 40,
-    status: "active",
   },
   {
     id: "P-003",
@@ -33,15 +28,13 @@ export const PRODUCTS: Product[] = [
     category: "Musk",
     price: 1500,
     stock: 0,
-    status: "active",
   },
   {
     id: "P-004",
     name: "Amber Attar 12ml",
     category: "Amber",
     price: 2800,
-    stock: 12,
-    status: "draft",
+    stock: 6,
   },
   {
     id: "P-005",
@@ -49,7 +42,6 @@ export const PRODUCTS: Product[] = [
     category: "Woody",
     price: 2200,
     stock: 8,
-    status: "active",
   },
 ];
 

@@ -1,3 +1,5 @@
+import { Loader2 } from "lucide-react";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +18,7 @@ interface ConfirmDeleteDialogProps {
   title: string;
   description: string;
   onConfirm: () => void;
+  isLoading?: boolean;
 }
 
 export const ConfirmDeleteDialog = ({
@@ -24,6 +27,7 @@ export const ConfirmDeleteDialog = ({
   title,
   description,
   onConfirm,
+  isLoading,
 }: ConfirmDeleteDialogProps) => (
   <AlertDialog open={open} onOpenChange={onOpenChange}>
     <AlertDialogContent>
@@ -32,12 +36,24 @@ export const ConfirmDeleteDialog = ({
         <AlertDialogDescription>{description}</AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel>Cancel</AlertDialogCancel>
+        <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
         <AlertDialogAction
-          onClick={onConfirm}
+          disabled={isLoading}
+          onClick={(e) => {
+            // Keep the dialog open until the request finishes
+            e.preventDefault();
+            onConfirm();
+          }}
           className={buttonVariants({ variant: "destructive" })}
         >
-          Delete
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Deleting...
+            </>
+          ) : (
+            "Delete"
+          )}
         </AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>

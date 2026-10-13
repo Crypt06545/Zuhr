@@ -12,7 +12,7 @@ const ProductsPage = async () => {
         title="Products"
         description="Manage your catalog, edit details or remove products."
       />
-      <ProductsManager initialProducts={products} />
+      <ProductsManager products={products} />
     </div>
   );
 };

@@ -7,15 +7,17 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-
 import { InjectModel } from '@nestjs/mongoose';
-
 import { Model, Types } from 'mongoose';
 
 import { CloudinaryService } from '../common/cloudinary/cloudinary.service.js';
-import { redis } from '../redis/redis.js';
+import { RedisService } from '../common/redis/redis.service.js';
+import {
+  Product,
+  type ProductDocument,
+} from '../products/schemas/product.schema.js';
 
-import { Category, CategoryDocument } from './schemas/category.schema.js';
+import { Category, type CategoryDocument } from './schemas/category.schema.js';
 
 import { CreateCategoryDto } from './dto/create-category.dto.js';
 import { UpdateCategoryDto } from './dto/update-category.dto.js';
@@ -25,9 +27,16 @@ const IMAGE_FOLDER = 'categories';
 
 const CACHE_PREFIX = 'categories';
 const CACHE_VERSION_KEY = 'categories:version';
-const CACHE_TTL_SECONDS = 60 * 60; // 1 hour
+const CACHE_TTL_SECONDS = 60 * 60; // 1 hour (শুধু backstop: প্রতিটি DB বদলে version বাড়ে)
 const MAX_CACHED_PAGE = 20;
 const MAX_HIERARCHY_DEPTH = 50;
+
+// slug শুধু a-z, 0-9 ও '-' হতে পারে (generateSlug তাই বানায়)। বাকি সব আগেই 404।
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const MAX_SLUG_LENGTH = 100;
+
+// Public response-এ ভেতরের field যায় না
+const PUBLIC_PROJECTION = '-imagePublicId -__v';
 
 @Injectable()
 export class CategoriesService {
@@ -36,7 +45,10 @@ export class CategoriesService {
   constructor(
     @InjectModel(Category.name)
     private readonly categoryModel: Model<CategoryDocument>,
+    @InjectModel(Product.name)
+    private readonly productModel: Model<ProductDocument>,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly redis: RedisService,
   ) {}
 
   // CREATE
@@ -60,48 +72,22 @@ export class CategoriesService {
       ? await this.validateParentCategory(dto.parentId)
       : null;
 
-    // -------------------------
-    // Cloudinary timing
-    // -------------------------
-
-    const uploadStart = Date.now();
-
     const uploaded = file
       ? await this.cloudinaryService.uploadImage(file, IMAGE_FOLDER)
       : null;
 
-    // console.log('☁️ Cloudinary:', Date.now() - uploadStart, 'ms');
-
-    // -------------------------
-    // MongoDB timing
-    // -------------------------
-
-    const dbStart = Date.now();
+    let category: CategoryDocument;
 
     try {
-      const category = await this.categoryModel.create({
+      category = await this.categoryModel.create({
         name,
         slug,
         image: uploaded?.url ?? '',
         imagePublicId: uploaded?.publicId ?? '',
         parentId,
       });
-
-      // console.log('🍃 MongoDB:', Date.now() - dbStart, 'ms');
-
-      // -------------------------
-      // Redis timing
-      // -------------------------
-
-      const redisStart = Date.now();
-
-      await this.invalidateCache();
-
-      // console.log('🔴 Redis:', Date.now() - redisStart, 'ms');
-
-      return category;
     } catch (error) {
-      await this.cloudinaryService.deleteImage(uploaded?.publicId);
+      await this.deleteImageQuietly(uploaded?.publicId);
 
       if (this.isDuplicateKeyError(error)) {
         throw new ConflictException('Category already exists');
@@ -109,11 +95,21 @@ export class CategoriesService {
 
       throw error;
     }
+
+    await this.invalidateCache();
+
+    return category;
   }
 
   // FIND ALL
   async findAll(query: CategoryQueryDto) {
-    const { search, parentId, page = 1, limit = 20 } = query;
+    const { search, parentId, rootOnly, page = 1, limit = 20 } = query;
+
+    if (parentId && rootOnly) {
+      throw new BadRequestException(
+        'Use either parentId or rootOnly, not both',
+      );
+    }
 
     const loader = async () => {
       const filter: Record<string, unknown> = {};
@@ -127,6 +123,8 @@ export class CategoriesService {
 
       if (parentId) {
         filter.parentId = new Types.ObjectId(parentId);
+      } else if (rootOnly) {
+        filter.parentId = null;
       }
 
       const skip = (page - 1) * limit;
@@ -134,7 +132,9 @@ export class CategoriesService {
       const [categories, total] = await Promise.all([
         this.categoryModel
           .find(filter)
-          .sort({ name: 1 })
+          .select(PUBLIC_PROJECTION)
+          // _id tiebreak: একই নামে page-এর সীমানায় ডুপ্লিকেট/হারানো এড়াতে
+          .sort({ name: 1, _id: 1 })
           .skip(skip)
           .limit(limit)
           .lean(),
@@ -158,18 +158,20 @@ export class CategoriesService {
       return loader();
     }
 
-    return this.readThrough(
-      `list:${parentId ?? 'all'}:${page}:${limit}`,
-      loader,
-    );
+    const scope = parentId ?? (rootOnly ? 'root' : 'all');
+
+    return this.cached(`list:${scope}:${page}:${limit}`, loader);
   }
 
   // FIND ONE
   async findOne(id: string) {
     this.validateObjectId(id);
 
-    return this.readThrough(`id:${id}`, async () => {
-      const category = await this.categoryModel.findById(id).lean();
+    return this.cached(`id:${id}`, async () => {
+      const category = await this.categoryModel
+        .findById(id)
+        .select(PUBLIC_PROJECTION)
+        .lean();
 
       if (!category) {
         throw new NotFoundException('Category not found');
@@ -183,9 +185,18 @@ export class CategoriesService {
   async findBySlug(slug: string) {
     const normalizedSlug = slug.toLowerCase().trim();
 
-    return this.readThrough(`slug:${normalizedSlug}`, async () => {
+    // যে slug কখনো থাকতে পারে না, সেটা Redis বা MongoDB পর্যন্ত যায় না
+    if (
+      normalizedSlug.length > MAX_SLUG_LENGTH ||
+      !SLUG_PATTERN.test(normalizedSlug)
+    ) {
+      throw new NotFoundException('Category not found');
+    }
+
+    return this.cached(`slug:${normalizedSlug}`, async () => {
       const category = await this.categoryModel
         .findOne({ slug: normalizedSlug })
+        .select(PUBLIC_PROJECTION)
         .lean();
 
       if (!category) {
@@ -268,19 +279,13 @@ export class CategoriesService {
       category.imagePublicId = uploaded.publicId;
     }
 
+    let saved: typeof category;
+
     try {
-      const saved = await category.save();
-
-      // save সফল হলেই পুরনো image মোছা হয়
-      if (uploaded) {
-        await this.cloudinaryService.deleteImage(oldPublicId);
-      }
-
-      await this.invalidateCache();
-
-      return saved;
+      saved = await category.save();
     } catch (error) {
-      await this.cloudinaryService.deleteImage(uploaded?.publicId);
+      // save ব্যর্থ: শুধু এই ক্ষেত্রেই নতুন image মোছা হয়
+      await this.deleteImageQuietly(uploaded?.publicId);
 
       if (this.isDuplicateKeyError(error)) {
         throw new ConflictException('Category already exists');
@@ -288,6 +293,16 @@ export class CategoriesService {
 
       throw error;
     }
+
+    // save সফল: আগে cache, তারপর পুরনো image। image মোছায় সমস্যা হলে শুধু log হয়,
+    // নতুন image বা cache কিছুই নষ্ট হয় না।
+    await this.invalidateCache();
+
+    if (uploaded) {
+      await this.deleteImageQuietly(oldPublicId);
+    }
+
+    return saved;
   }
 
   // DELETE (hard delete)
@@ -310,11 +325,26 @@ export class CategoriesService {
       );
     }
 
-    await this.categoryModel.deleteOne({ _id: category._id });
+    // product-এর category required, তাই product থাকলে মুছলে সেগুলো ঝুলে যাবে
+    const hasProducts = await this.productModel.exists({
+      category: category._id,
+    });
 
-    await this.cloudinaryService.deleteImage(category.imagePublicId);
+    if (hasProducts) {
+      throw new BadRequestException(
+        'Cannot delete category that has products. Move or delete the products first',
+      );
+    }
 
+    const result = await this.categoryModel.deleteOne({ _id: category._id });
+
+    if (result.deletedCount === 0) {
+      throw new NotFoundException('Category not found');
+    }
+
+    // আগে cache, তারপর image: image মোছায় সমস্যা হলে cache পুরনো থাকে না
     await this.invalidateCache();
+    await this.deleteImageQuietly(category.imagePublicId);
 
     return {
       message: 'Category deleted successfully',
@@ -325,52 +355,37 @@ export class CategoriesService {
   // CACHE HELPERS
   // -----------------------------
 
-  private async getCacheVersion(): Promise<number> {
-    const version = await redis.get<number>(CACHE_VERSION_KEY);
-
-    return Number(version ?? 0);
-  }
-
-  private async readThrough<T extends object>(
+  // key-তে version থাকে। version বাড়লে পুরনো সব key অকেজো হয়, তাই ধীর reader
+  // পুরনো data এনে লিখলেও সেটা কেউ পড়ে না। Redis ব্যর্থ হলে DB থেকেই চলে (RedisService fail-open)।
+  private async cached<T extends object>(
     suffix: string,
     loader: () => Promise<T>,
   ): Promise<T> {
-    let key: string | null = null;
+    const version = Number(
+      (await this.redis.get<number>(CACHE_VERSION_KEY)) ?? 0,
+    );
 
-    try {
-      const version = await this.getCacheVersion();
-
-      key = `${CACHE_PREFIX}:v${version}:${suffix}`;
-
-      const hit = await redis.get<T>(key);
-
-      if (hit) {
-        return hit;
-      }
-    } catch (error) {
-      this.logger.warn(`Cache read failed: ${String(error)}`);
-    }
-
-    // loader NotFound throw করলে কিছু cache হয় না
-    const fresh = await loader();
-
-    if (key) {
-      try {
-        await redis.set(key, fresh, { ex: CACHE_TTL_SECONDS });
-      } catch (error) {
-        this.logger.warn(`Cache write failed: ${String(error)}`);
-      }
-    }
-
-    return fresh;
+    return this.redis.remember(
+      `${CACHE_PREFIX}:v${version}:${suffix}`,
+      CACHE_TTL_SECONDS,
+      loader,
+    );
   }
 
-  // version বাড়ালে পুরনো সব key এক মুহূর্তে অকেজো হয়
-  private async invalidateCache(): Promise<void> {
+  private invalidateCache(): Promise<void> {
+    return this.redis.incr(CACHE_VERSION_KEY);
+  }
+
+  // Cloudinary সমস্যা শুধু log হয়: আসল ফলাফল বা আসল error যেন চাপা না পড়ে
+  private async deleteImageQuietly(publicId?: string | null): Promise<void> {
+    if (!publicId) {
+      return;
+    }
+
     try {
-      await redis.incr(CACHE_VERSION_KEY);
+      await this.cloudinaryService.deleteImage(publicId);
     } catch (error) {
-      this.logger.error(`Cache invalidation failed: ${String(error)}`);
+      this.logger.warn(`Image cleanup failed (${publicId}): ${String(error)}`);
     }
   }
 

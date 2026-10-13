@@ -10,9 +10,9 @@ const OrdersPage = async () => {
     <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
       <PageHeader
         title="Orders"
-        description="View orders, update their status or remove them."
+        description="View orders, edit their details or remove them."
       />
-      <OrdersManager initialOrders={orders} />
+      <OrdersManager orders={orders} />
     </div>
   );
 };

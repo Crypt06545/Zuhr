@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Loader2 } from "lucide-react";
 
 import { FieldError } from "@/components/common/FieldError";
 import { Button } from "@/components/ui/button";
@@ -14,20 +15,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { Product } from "@/lib/mock-products";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import type { Product, ProductStatus } from "@/lib/mock-products";
+  getStockState,
+  LOW_STOCK_THRESHOLD,
+  StockBadge,
+} from "./ProductStatusBadge";
 
 type Errors = Partial<Record<"name" | "category" | "price" | "stock", string>>;
 
 interface ProductFormProps {
   product: Product;
-  onSave: (product: Product) => void;
+  onSave: (product: Product) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -36,36 +35,42 @@ const ProductForm = ({ product, onSave, onCancel }: ProductFormProps) => {
   const [category, setCategory] = useState(product.category);
   const [price, setPrice] = useState(String(product.price));
   const [stock, setStock] = useState(String(product.stock));
-  const [status, setStatus] = useState<ProductStatus>(product.status);
   const [errors, setErrors] = useState<Errors>({});
+  const [isSaving, setIsSaving] = useState(false);
 
-  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const stockNum = Number(stock);
+  const stockValid =
+    stock.trim() !== "" && Number.isInteger(stockNum) && stockNum >= 0;
+
+  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (isSaving) return;
 
     const next: Errors = {};
     const priceNum = Number(price);
-    const stockNum = Number(stock);
 
     if (!name.trim()) next.name = "Name is required";
     if (!category.trim()) next.category = "Category is required";
     if (price.trim() === "" || !Number.isFinite(priceNum) || priceNum < 0) {
       next.price = "Enter a valid price";
     }
-    if (stock.trim() === "" || !Number.isInteger(stockNum) || stockNum < 0) {
-      next.stock = "Enter a whole number";
-    }
+    if (!stockValid) next.stock = "Enter a whole number";
 
     setErrors(next);
     if (Object.keys(next).length > 0) return;
 
-    onSave({
-      ...product,
-      name: name.trim(),
-      category: category.trim(),
-      price: priceNum,
-      stock: stockNum,
-      status,
-    });
+    setIsSaving(true);
+    try {
+      await onSave({
+        ...product,
+        name: name.trim(),
+        category: category.trim(),
+        price: priceNum,
+        stock: stockNum,
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -122,27 +127,35 @@ const ProductForm = ({ product, onSave, onCancel }: ProductFormProps) => {
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="product-status">Status</Label>
-        <Select
-          value={status}
-          onValueChange={(value) => setStatus(value as ProductStatus)}
-        >
-          <SelectTrigger id="product-status" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="draft">Draft</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2.5">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Stock status</p>
+          <p className="text-xs text-muted-foreground">
+            Low stock at {LOW_STOCK_THRESHOLD} or fewer
+          </p>
+        </div>
+        {stockValid && <StockBadge state={getStockState(stockNum)} />}
       </div>
 
       <DialogFooter className="gap-2 sm:gap-0">
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={isSaving}
+        >
           Cancel
         </Button>
-        <Button type="submit">Save changes</Button>
+        <Button type="submit" disabled={isSaving}>
+          {isSaving ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            "Save changes"
+          )}
+        </Button>
       </DialogFooter>
     </form>
   );
@@ -151,7 +164,7 @@ const ProductForm = ({ product, onSave, onCancel }: ProductFormProps) => {
 interface ProductEditDialogProps {
   product: Product | null;
   onClose: () => void;
-  onSave: (product: Product) => void;
+  onSave: (product: Product) => Promise<void>;
 }
 
 export const ProductEditDialog = ({
@@ -165,7 +178,7 @@ export const ProductEditDialog = ({
       if (!open) onClose();
     }}
   >
-    <DialogContent className="sm:max-w-md">
+    <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
       <DialogHeader>
         <DialogTitle>Edit product</DialogTitle>
         <DialogDescription>
