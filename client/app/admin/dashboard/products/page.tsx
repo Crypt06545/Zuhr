@@ -1,5 +1,5 @@
-
 import { getProducts } from "@/lib/mock-products";
+import { AddProductSheet } from "../AddProductSheet";
 import { PageHeader } from "../PageHeader";
 import { ProductsManager } from "../ProductsManager";
 
@@ -11,6 +11,7 @@ const ProductsPage = async () => {
       <PageHeader
         title="Products"
         description="Manage your catalog, edit details or remove products."
+        action={<AddProductSheet />}
       />
       <ProductsManager products={products} />
     </div>

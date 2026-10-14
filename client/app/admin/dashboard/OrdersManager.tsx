@@ -1,10 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -12,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { getErrorMessage } from "@/hooks/use-auth";
 import {
   deleteOrder,
@@ -20,24 +17,20 @@ import {
   updateOrderStatus,
 } from "@/lib/api/mutations";
 import type { Order, OrderStatus } from "@/lib/mock-dashboard";
+import {
+  applyOrderFilters,
+  DEFAULT_FILTERS,
+  hasActiveFilters,
+  type OrderFilters,
+} from "@/lib/order-filters";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { OrderEditDialog } from "./OrderEditDialog";
 import { STATUS_META } from "./OrderStatusBadge";
 import { OrdersManageTable } from "./OrdersManageTable";
-
-type Filter = "all" | OrderStatus;
-
-const FILTERS: Filter[] = [
-  "all",
-  "delivered",
-  "shipped",
-  "processing",
-  "cancelled",
-];
+import { OrdersToolbar } from "./OrdersToolbar";
 
 export const OrdersManager = ({ orders }: { orders: Order[] }) => {
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filters, setFilters] = useState<OrderFilters>(DEFAULT_FILTERS);
   const [editing, setEditing] = useState<Order | null>(null);
   const [deleting, setDeleting] = useState<Order | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -56,20 +49,10 @@ export const OrdersManager = ({ orders }: { orders: Order[] }) => {
     [orders, statusOverrides],
   );
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows.filter((o) => {
-      const matchesStatus = filter === "all" || o.status === filter;
-      const matchesQuery =
-        !q ||
-        o.customer.toLowerCase().includes(q) ||
-        o.email.toLowerCase().includes(q) ||
-        o.phone.includes(q) ||
-        o.product.toLowerCase().includes(q) ||
-        o.id.toLowerCase().includes(q);
-      return matchesStatus && matchesQuery;
-    });
-  }, [rows, query, filter]);
+  const visible = useMemo(
+    () => applyOrderFilters(rows, filters),
+    [rows, filters],
+  );
 
   const handleStatusChange = async (order: Order, status: OrderStatus) => {
     if (status === order.status || updatingId) return;
@@ -126,31 +109,12 @@ export const OrdersManager = ({ orders }: { orders: Order[] }) => {
             </CardDescription>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative w-full sm:max-w-xs">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search orders..."
-                className="h-9 pl-9"
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {FILTERS.map((item) => (
-                <Button
-                  key={item}
-                  type="button"
-                  size="sm"
-                  variant={filter === item ? "default" : "outline"}
-                  onClick={() => setFilter(item)}
-                >
-                  {item === "all" ? "All" : STATUS_META[item].label}
-                </Button>
-              ))}
-            </div>
-          </div>
+          <OrdersToolbar
+            filters={filters}
+            onChange={setFilters}
+            onReset={() => setFilters(DEFAULT_FILTERS)}
+            isFiltered={hasActiveFilters(filters)}
+          />
         </CardHeader>
 
         <CardContent>

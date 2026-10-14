@@ -19,6 +19,7 @@ import { STATUSES } from "@/lib/dashboard-stats";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { Order, OrderStatus } from "@/lib/mock-dashboard";
 
+import { getInvoicePath } from "@/lib/routes";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { RowActions } from "./RowActions";
 import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/api/order-options";
@@ -55,7 +56,7 @@ export const OrdersManageTable = ({
         <TableHead className="hidden lg:table-cell">Payment</TableHead>
         <TableHead>Status</TableHead>
         <TableHead className="text-right">Amount</TableHead>
-        <TableHead className="w-24">
+        <TableHead className="w-32">
           <span className="sr-only">Actions</span>
         </TableHead>
       </TableRow>
@@ -147,6 +148,7 @@ export const OrdersManageTable = ({
               <TableCell>
                 <RowActions
                   label={`order ${order.id}`}
+                  invoiceHref={getInvoicePath(order.id)}
                   onEdit={() => onEdit(order)}
                   onDelete={() => onDelete(order)}
                 />
