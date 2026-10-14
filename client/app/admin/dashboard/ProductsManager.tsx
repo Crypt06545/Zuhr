@@ -14,16 +14,17 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getErrorMessage } from "@/hooks/use-auth";
-import { deleteProduct, updateProduct } from "@/lib/api/mutations";
+import { deleteProduct } from "@/lib/api/mutations";
 import type { Product } from "@/lib/mock-products";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
-import { ProductEditDialog } from "./ProductEditDialog";
+
 import {
   getStockState,
   STOCK_STATE_META,
   type StockState,
 } from "./ProductStatusBadge";
 import { ProductsTable } from "./ProductsTable";
+import { EditProductSheet } from "./Editproductsheet";
 
 type Filter = "all" | StockState;
 
@@ -32,9 +33,13 @@ const FILTERS: Filter[] = ["all", "in_stock", "low_stock", "out_of_stock"];
 export const ProductsManager = ({ products }: { products: Product[] }) => {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
-  const [editing, setEditing] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState<Product | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // The product is not cleared on close, so the sheet keeps its content
+  // while it slides out instead of blinking empty.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editProduct, setEditProduct] = useState<Product | null>(null);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -50,16 +55,9 @@ export const ProductsManager = ({ products }: { products: Product[] }) => {
     });
   }, [products, query, filter]);
 
-  // Demo mode: the list does not change. After a real API call succeeds,
-  // call router.refresh() here so the page re-fetches the products.
-  const handleSave = async (updated: Product) => {
-    try {
-      await updateProduct(updated);
-      toast.success(`${updated.name} updated.`);
-      setEditing(null);
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to update product."));
-    }
+  const handleEdit = (product: Product) => {
+    setEditProduct(product);
+    setEditOpen(true);
   };
 
   const handleDelete = async () => {
@@ -118,16 +116,16 @@ export const ProductsManager = ({ products }: { products: Product[] }) => {
         <CardContent>
           <ProductsTable
             products={visible}
-            onEdit={setEditing}
+            onEdit={handleEdit}
             onDelete={setDeleting}
           />
         </CardContent>
       </Card>
 
-      <ProductEditDialog
-        product={editing}
-        onClose={() => setEditing(null)}
-        onSave={handleSave}
+      <EditProductSheet
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        product={editProduct}
       />
 
       <ConfirmDeleteDialog

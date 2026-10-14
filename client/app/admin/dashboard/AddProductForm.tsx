@@ -85,13 +85,14 @@ const quillFormats = [
 
 const MAX_IMAGES = 5;
 
-// Placeholder categories for the design: swap with your real list later
+// Placeholder categories for the design: swap with your real list later.
+// The value is the name, so a product's own category matches an option.
 const categories = [
-  { _id: "electronics", name: "Electronics" },
-  { _id: "fashion", name: "Fashion" },
-  { _id: "perfume", name: "Perfume" },
-  { _id: "home", name: "Home & Living" },
-  { _id: "beauty", name: "Beauty" },
+  { _id: "Oud", name: "Oud" },
+  { _id: "Floral", name: "Floral" },
+  { _id: "Musk", name: "Musk" },
+  { _id: "Amber", name: "Amber" },
+  { _id: "Woody", name: "Woody" },
 ];
 
 type Variant = {
@@ -101,7 +102,7 @@ type Variant = {
   costPrice: string;
   stock: string;
 };
-type FormValues = {
+export type FormValues = {
   productName: string;
   brand: string;
   category: string;
@@ -131,6 +132,16 @@ const buildCombos = (sizes: string[], colors: string[]) => {
 
 const comboKey = (size: string | null, color: string | null) =>
   `${size || ""}__${color || ""}`;
+
+// What the edit sheet passes in (all values are strings, like the inputs).
+// imageUrls = images already saved on the product.
+export type ProductInitialValues = Partial<FormValues> & {
+  imageUrls?: string[];
+};
+
+const uniq = (list: (string | null)[]) => [
+  ...new Set(list.filter((x): x is string => !!x)),
+];
 
 const Section = ({
   title,
@@ -178,13 +189,37 @@ const DescriptionEditor = ({
   );
 };
 
-export const AddProductForm = ({ onDone }: { onDone: () => void }) => {
+export const AddProductForm = ({
+  onDone,
+  mode = "add",
+  initialValues,
+}: {
+  onDone: () => void;
+  mode?: "add" | "edit";
+  initialValues?: ProductInitialValues;
+}) => {
+  const { imageUrls: initialUrls, ...formInit } = initialValues ?? {};
+  const initialVariants = formInit.variants ?? [];
+
+  // If the product's category is not in the list, still show it as an option
+  const initialCategory = formInit.category ?? "";
+  const categoryOptions =
+    !initialCategory || categories.some((c) => c._id === initialCategory)
+      ? categories
+      : [...categories, { _id: initialCategory, name: initialCategory }];
+
   const [images, setImages] = useState<ImageItem[]>([]);
-  const [imageUrls, setImageUrls] = useState<string[]>([""]);
-  const [hasVariants, setHasVariants] = useState(false);
-  const [sizes, setSizes] = useState<string[]>([]);
+  const [imageUrls, setImageUrls] = useState<string[]>(
+    initialUrls?.length ? initialUrls : [""],
+  );
+  const [hasVariants, setHasVariants] = useState(initialVariants.length > 0);
+  const [sizes, setSizes] = useState<string[]>(() =>
+    uniq(initialVariants.map((v) => v.size)),
+  );
   const [sizeInput, setSizeInput] = useState("");
-  const [colors, setColors] = useState<string[]>([]);
+  const [colors, setColors] = useState<string[]>(() =>
+    uniq(initialVariants.map((v) => v.color)),
+  );
   const [colorInput, setColorInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -212,6 +247,7 @@ export const AddProductForm = ({ onDone }: { onDone: () => void }) => {
       badge: "none",
       description: "",
       variants: [],
+      ...formInit,
     },
   });
 
@@ -360,7 +396,8 @@ export const AddProductForm = ({ onDone }: { onDone: () => void }) => {
       formData.append("imageUrls", JSON.stringify(validUrls));
     }
 
-    console.log("[Add product] values:", {
+    const tag = mode === "edit" ? "[Update product]" : "[Add product]";
+    console.log(`${tag} values:`, {
       ...data,
       description,
       hasVariants,
@@ -378,9 +415,13 @@ export const AddProductForm = ({ onDone }: { onDone: () => void }) => {
         sizeKB: Math.round(i.file.size / 1024),
       })),
     );
-    console.log("[Add product] FormData entries:", [...formData.entries()]);
+    console.log(`${tag} FormData entries:`, [...formData.entries()]);
 
-    toast.success("Product logged to the console.");
+    toast.success(
+      mode === "edit"
+        ? "Changes logged to the console."
+        : "Product logged to the console.",
+    );
     setIsSubmitting(false);
     onDone();
   };
@@ -437,7 +478,7 @@ export const AddProductForm = ({ onDone }: { onDone: () => void }) => {
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {categories.map((cat) => (
+                      {categoryOptions.map((cat) => (
                         <SelectItem key={cat._id} value={cat._id}>
                           {cat.name}
                         </SelectItem>
@@ -891,8 +932,10 @@ export const AddProductForm = ({ onDone }: { onDone: () => void }) => {
           {isSubmitting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Adding...
+              {mode === "edit" ? "Saving..." : "Adding..."}
             </>
+          ) : mode === "edit" ? (
+            "Save changes"
           ) : (
             "Add product"
           )}
