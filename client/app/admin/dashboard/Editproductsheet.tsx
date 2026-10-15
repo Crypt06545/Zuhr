@@ -1,5 +1,8 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
+
+import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
@@ -7,32 +10,16 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { getErrorMessage } from "@/hooks/use-auth";
+
 import type { Product } from "@/lib/mock-products";
-import { AddProductForm, type ProductInitialValues } from "./AddProductForm";
-
-// Turns the clicked product row into the form's values (all strings).
-// Fields the list doesn't have (brand, sku, variants, images...) stay empty.
-const toFormValues = (product: Product): ProductInitialValues => ({
-  productName: product.name,
-  category: product.category,
-  price: String(product.price),
-  stock: String(product.stock),
-});
-
-// TODO: when the API is ready, fetch the full product by product.id here
-// and map every field with toFormValues. Keep the { data, isLoading } shape
-// and nothing else in this file or the form has to change.
-const useProductForEdit = (product: Product | null) => {
-  return {
-    data: product ? toFormValues(product) : undefined,
-    isLoading: false,
-  };
-};
+import { AddProductForm } from "./AddProductForm";
+import { getAdminProductApi } from "@/lib/api/Products.api";
 
 interface EditProductSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  product: Product | null;
+  product: Product | null; // the clicked table row (only its id is used)
 }
 
 export const EditProductSheet = ({
@@ -40,7 +27,17 @@ export const EditProductSheet = ({
   onOpenChange,
   product,
 }: EditProductSheetProps) => {
-  const { data, isLoading } = useProductForEdit(product);
+  const productId = product?.id;
+
+  // Loads the full product (images, variants, tags...) from the backend.
+  // No refetch on focus, so the form is never replaced while someone types.
+  const { data, isPending, isError, error, refetch } = useQuery({
+    queryKey: ["admin-product", productId],
+    queryFn: () => getAdminProductApi(productId!),
+    enabled: open && !!productId,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -55,7 +52,21 @@ export const EditProductSheet = ({
           </SheetDescription>
         </SheetHeader>
 
-        {isLoading || !data ? (
+        {isError ? (
+          <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+            <p className="text-sm text-muted-foreground">
+              {getErrorMessage(error, "Failed to load this product.")}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+            >
+              Try again
+            </Button>
+          </div>
+        ) : isPending || !data ? (
           <div className="space-y-4 px-6">
             {Array.from({ length: 6 }).map((_, i) => (
               <div
@@ -65,12 +76,10 @@ export const EditProductSheet = ({
             ))}
           </div>
         ) : (
-          // The form starts with `data` as its values, so it mounts only once
-          // the data is ready. A new key resets it for another product.
+          // The form starts with this data, so it mounts only once it has arrived
           <AddProductForm
-            key={product?.id}
-            mode="edit"
-            initialValues={data}
+            key={data._id}
+            product={data}
             onDone={() => onOpenChange(false)}
           />
         )}

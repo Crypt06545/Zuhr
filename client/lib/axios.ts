@@ -16,9 +16,45 @@ API.interceptors.request.use((config) => {
   return config;
 });
 
-// একাধিক request একসাথে 401 পেলে যেন বারবার refresh call না হয়,
-// একটাই promise শেয়ার করছি সব request এর মধ্যে
+// একাধিক জায়গা একসাথে refresh চাইলেও যেন বারবার call না হয়,
+// একটাই promise শেয়ার করছি সবার মধ্যে
 let refreshPromise: Promise<string> | null = null;
+
+export const refreshAccessToken = (): Promise<string> => {
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post(
+        `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`,
+        {},
+        { withCredentials: true },
+      )
+      .then((res) => {
+        const newToken = res.data.data.accessToken;
+        useAuthStore.getState().setAccessToken(newToken);
+        return newToken;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+};
+
+// Page reload এর পর accessToken memory তে থাকে না। প্রথম request টা token ছাড়া গেলে
+// backend 401 দেয় (তারপর interceptor refresh করে আবার পাঠায়)।
+// এই function টা প্রথম request এর আগেই token এনে দেয়, তাই কোনো 401 আর হয় না।
+// Token আনতে না পারলে null (মানে login করা নেই)।
+export const ensureAccessToken = async (): Promise<string | null> => {
+  const existing = useAuthStore.getState().accessToken;
+  if (existing) return existing;
+
+  try {
+    return await refreshAccessToken();
+  } catch {
+    return null;
+  }
+};
 
 API.interceptors.response.use(
   (response) => response,
@@ -34,24 +70,7 @@ API.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        if (!refreshPromise) {
-          refreshPromise = axios
-            .post(
-              `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`,
-              {},
-              { withCredentials: true },
-            )
-            .then((res) => {
-              const newToken = res.data.data.accessToken;
-              useAuthStore.getState().setAccessToken(newToken);
-              return newToken;
-            })
-            .finally(() => {
-              refreshPromise = null;
-            });
-        }
-
-        const newToken = await refreshPromise;
+        const newToken = await refreshAccessToken();
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return API(originalRequest);
       } catch {

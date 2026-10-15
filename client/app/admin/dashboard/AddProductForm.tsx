@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
-import { ImageIcon, Loader2, Plus, Star, X } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import "react-quill-new/dist/quill.snow.css";
 
@@ -23,24 +24,25 @@ import {
   ImageUpload,
   type ImageItem,
 } from "@/components/dashboard/ImageUpload";
+import { getErrorMessage } from "@/hooks/use-auth";
+import { AdminProductDetail, createProductApi, updateProductApi, updateVariantStockApi } from "@/lib/api/Products.api";
+import { BADGE_OPTIONS, buildProductPayload, FormValues, isEmptyHtml, MAX_IMAGES, tagsError, toFormValues } from "./products/Productpayload";
+import { getCategoriesApi } from "@/lib/api/Categories.api";
+
+
+
+const EditorSkeleton = () => (
+  <div className="h-[260px] animate-pulse rounded-md bg-muted/40" />
+);
 
 // Quill is heavy: load it as its own chunk, browser only
 const ReactQuill = dynamic(() => import("react-quill-new"), {
   ssr: false,
-  loading: () => (
-    <div className="h-[260px] animate-pulse rounded-md bg-muted/40" />
-  ),
+  loading: () => <EditorSkeleton />,
 });
 
-const badgeOptions = [
-  "Hot Deal",
-  "New Arrival",
-  "Best Seller",
-  "Top Rated",
-  "Limited Stock",
-  "Trending",
-];
-
+// No "image" button: the backend limits the description to 20,000 characters
+// and an embedded image alone is bigger than that.
 const quillModules = {
   toolbar: [
     [{ header: [1, 2, 3, 4, 5, 6, false] }],
@@ -55,7 +57,7 @@ const quillModules = {
     ],
     ["blockquote", "code-block"],
     [{ script: "sub" }, { script: "super" }],
-    ["link", "image", "video"],
+    ["link", "video"],
     ["clean"],
     [{ font: [] }],
     [{ size: ["small", false, "large", "huge"] }],
@@ -72,7 +74,6 @@ const quillFormats = [
   "list",
   "indent",
   "link",
-  "image",
   "video",
   "color",
   "background",
@@ -83,43 +84,7 @@ const quillFormats = [
   "size",
 ];
 
-const MAX_IMAGES = 5;
-
-// Placeholder categories for the design: swap with your real list later.
-// The value is the name, so a product's own category matches an option.
-const categories = [
-  { _id: "Oud", name: "Oud" },
-  { _id: "Floral", name: "Floral" },
-  { _id: "Musk", name: "Musk" },
-  { _id: "Amber", name: "Amber" },
-  { _id: "Woody", name: "Woody" },
-];
-
-type Variant = {
-  size: string | null;
-  color: string | null;
-  price: string;
-  costPrice: string;
-  stock: string;
-};
-export type FormValues = {
-  productName: string;
-  brand: string;
-  category: string;
-  price: string;
-  costPrice: string;
-  lowStockThreshold: string;
-  stock: string;
-  discount: string;
-  sku: string;
-  ratingAverage: string;
-  status: string;
-  isPublished: boolean;
-  isFeatured: boolean;
-  badge: string;
-  description: string;
-  variants: Variant[];
-};
+const MAX_DESCRIPTION = 20000;
 
 const buildCombos = (sizes: string[], colors: string[]) => {
   if (sizes.length && colors.length) {
@@ -133,22 +98,19 @@ const buildCombos = (sizes: string[], colors: string[]) => {
 const comboKey = (size: string | null, color: string | null) =>
   `${size || ""}__${color || ""}`;
 
-// What the edit sheet passes in (all values are strings, like the inputs).
-// imageUrls = images already saved on the product.
-export type ProductInitialValues = Partial<FormValues> & {
-  imageUrls?: string[];
-};
-
 const uniq = (list: (string | null)[]) => [
   ...new Set(list.filter((x): x is string => !!x)),
 ];
+
+const whole = (v: string) =>
+  v === "" || /^\d+$/.test(v) || "Enter a whole number";
 
 const Section = ({
   title,
   children,
 }: {
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) => (
   <section className="space-y-4 border-t border-border pt-6 first:border-t-0 first:pt-0">
     <h3 className="text-sm font-semibold">{title}</h3>
@@ -156,8 +118,35 @@ const Section = ({
   </section>
 );
 
-const ErrorText = ({ message }: { message?: string }) =>
-  message ? <p className="text-xs text-red-500">{message}</p> : null;
+const Field = ({
+  label,
+  htmlFor,
+  required,
+  hint,
+  error,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  required?: boolean;
+  hint?: string;
+  error?: string;
+  children: ReactNode;
+}) => (
+  <div className="space-y-2">
+    <Label htmlFor={htmlFor}>
+      {label}
+      {required && <span className="text-red-500"> *</span>}
+      {hint && (
+        <span className="ml-1 text-xs font-normal text-muted-foreground">
+          {hint}
+        </span>
+      )}
+    </Label>
+    {children}
+    {error && <p className="text-xs text-red-500">{error}</p>}
+  </div>
+);
 
 // Mounts Quill only after the sheet's slide-in animation is nearly done
 const DescriptionEditor = ({
@@ -173,9 +162,7 @@ const DescriptionEditor = ({
     return () => clearTimeout(t);
   }, []);
 
-  if (!ready) {
-    return <div className="h-[260px] animate-pulse rounded-md bg-muted/40" />;
-  }
+  if (!ready) return <EditorSkeleton />;
   return (
     <ReactQuill
       theme="snow"
@@ -189,39 +176,38 @@ const DescriptionEditor = ({
   );
 };
 
-export const AddProductForm = ({
-  onDone,
-  mode = "add",
-  initialValues,
-}: {
+interface AddProductFormProps {
   onDone: () => void;
-  mode?: "add" | "edit";
-  initialValues?: ProductInitialValues;
-}) => {
-  const { imageUrls: initialUrls, ...formInit } = initialValues ?? {};
-  const initialVariants = formInit.variants ?? [];
+  product?: AdminProductDetail; // pass it to edit; leave it out to add
+}
 
-  // If the product's category is not in the list, still show it as an option
-  const initialCategory = formInit.category ?? "";
-  const categoryOptions =
-    !initialCategory || categories.some((c) => c._id === initialCategory)
-      ? categories
-      : [...categories, { _id: initialCategory, name: initialCategory }];
+export const AddProductForm = ({ onDone, product }: AddProductFormProps) => {
+  const isEdit = !!product;
+  const queryClient = useQueryClient();
+  const [initial] = useState(() => toFormValues(product));
 
-  const [images, setImages] = useState<ImageItem[]>([]);
-  const [imageUrls, setImageUrls] = useState<string[]>(
-    initialUrls?.length ? initialUrls : [""],
-  );
-  const [hasVariants, setHasVariants] = useState(initialVariants.length > 0);
+  const [images, setImages] = useState<ImageItem[]>([]); // new files
+  const [existingImages, setExistingImages] = useState(product?.images ?? []);
+  const [imageError, setImageError] = useState("");
+  const [hasVariants, setHasVariants] = useState(initial.variants.length > 0);
   const [sizes, setSizes] = useState<string[]>(() =>
-    uniq(initialVariants.map((v) => v.size)),
+    uniq(initial.variants.map((v) => v.size)),
   );
   const [sizeInput, setSizeInput] = useState("");
   const [colors, setColors] = useState<string[]>(() =>
-    uniq(initialVariants.map((v) => v.color)),
+    uniq(initial.variants.map((v) => v.color)),
   );
   const [colorInput, setColorInput] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const {
+    data: categories = [],
+    isLoading: categoriesLoading,
+    isError: categoriesError,
+  } = useQuery({
+    queryKey: ["admin-categories"],
+    queryFn: getCategoriesApi,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const {
     register,
@@ -229,27 +215,7 @@ export const AddProductForm = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<FormValues>({
-    defaultValues: {
-      productName: "",
-      brand: "",
-      category: "",
-      price: "",
-      costPrice: "",
-      lowStockThreshold: "",
-      stock: "",
-      discount: "",
-      sku: "",
-      ratingAverage: "",
-      status: "draft",
-      isPublished: false,
-      isFeatured: false,
-      badge: "none",
-      description: "",
-      variants: [],
-      ...formInit,
-    },
-  });
+  } = useForm<FormValues>({ defaultValues: initial });
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -261,7 +227,69 @@ export const AddProductForm = ({
   const sellsBelowCost =
     basePrice !== "" && baseCost !== "" && Number(basePrice) < Number(baseCost);
 
-  /* ---------- variants ---------- */
+  const badgeOptions =
+    initial.badge !== "none" && !BADGE_OPTIONS.includes(initial.badge)
+      ? [...BADGE_OPTIONS, initial.badge]
+      : BADGE_OPTIONS;
+
+  /* ---------- save (create or update) ---------- */
+  const save = useMutation({
+    mutationFn: async (input: {
+      formData: FormData;
+      stockChanges: { variantId: string; quantity: number }[];
+    }) => {
+      if (!product) return createProductApi(input.formData);
+
+      const updated = await updateProductApi(product._id, input.formData);
+      for (const change of input.stockChanges) {
+        await updateVariantStockApi(product._id, change.variantId, {
+          type: "set",
+          quantity: change.quantity,
+        });
+      }
+      return updated;
+    },
+    onSuccess: () => {
+      toast.success(isEdit ? "Product updated." : "Product created.");
+      queryClient.invalidateQueries({ queryKey: ["admin-products"] });
+      onDone();
+    },
+    onError: (error) => {
+      toast.error(
+        getErrorMessage(
+          error,
+          isEdit ? "Failed to update product." : "Failed to create product.",
+        ),
+      );
+    },
+  });
+
+  const onSubmit = (data: FormValues) => {
+    if (hasVariants && data.variants.length === 0) {
+      toast.error("Add at least one size or color.");
+      return;
+    }
+    if (existingImages.length + images.length < 1) {
+      setImageError("Add at least one image.");
+      return;
+    }
+    setImageError("");
+
+    const removeImagePublicIds = (product?.images ?? [])
+      .filter((img) => !existingImages.some((e) => e.publicId === img.publicId))
+      .map((img) => img.publicId);
+
+    save.mutate(
+      buildProductPayload(data, {
+        hasVariants,
+        files: images.map((i) => i.file),
+        product,
+        removeImagePublicIds,
+      }),
+    );
+  };
+
+  /* ---------- sizes / colors ---------- */
   const updateVariants = (newSizes: string[], newColors: string[]) => {
     const combos = buildCombos(newSizes, newColors);
     const comboKeys = combos.map((c) => comboKey(c.size, c.color));
@@ -322,110 +350,6 @@ export const AddProductForm = ({
     }
   };
 
-  /* ---------- images ---------- */
-  const updateImageUrl = (index: number, value: string) =>
-    setImageUrls((prev) => prev.map((u, i) => (i === index ? value : u)));
-  const removeImageUrl = (index: number) =>
-    setImageUrls((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      return next.length === 0 ? [""] : next;
-    });
-
-  /* ---------- submit (log only) ---------- */
-  const onSubmit = async (data: FormValues) => {
-    setIsSubmitting(true);
-
-    const isArchived = data.status === "archived";
-    const isPublished = !isArchived && data.isPublished;
-    const discount = Number(data.discount);
-    const compareAtPrice =
-      discount > 0 && discount < 100
-        ? Math.round(Number(data.price) / ((100 - discount) / 100))
-        : undefined;
-    const hasText =
-      /<img/i.test(data.description) ||
-      data.description.replace(/<[^>]*>/g, "").trim() !== "";
-    const description = hasText ? data.description : "";
-    const validUrls = imageUrls.map((u) => u.trim()).filter(Boolean);
-
-    const variants = hasVariants
-      ? (data.variants || []).map((v) => ({
-          size: v.size || null,
-          color: v.color || null,
-          price: v.price ? Number(v.price) : Number(data.price),
-          costPrice: v.costPrice
-            ? Number(v.costPrice)
-            : Number(data.costPrice) || 0,
-          stock: v.stock ? Number(v.stock) : 0,
-        }))
-      : [];
-
-    // Placeholder field names: match them to your NestJS DTO later
-    const formData = new FormData();
-    formData.append("title", data.productName);
-    formData.append("description", description);
-    formData.append("price", String(Number(data.price)));
-    formData.append("category", data.category);
-    formData.append("brand", data.brand || "");
-    formData.append("sku", data.sku || "");
-    formData.append("costPrice", String(Number(data.costPrice) || 0));
-    if (data.lowStockThreshold !== "") {
-      formData.append(
-        "lowStockThreshold",
-        String(Number(data.lowStockThreshold)),
-      );
-    }
-    formData.append("hasVariants", String(hasVariants));
-    formData.append("isFeatured", String(data.isFeatured));
-    formData.append("badge", data.badge);
-    if (data.ratingAverage !== "") {
-      formData.append("ratingAverage", String(Number(data.ratingAverage)));
-    }
-    formData.append("isPublished", String(isPublished));
-    formData.append("isArchived", String(isArchived));
-    if (compareAtPrice !== undefined) {
-      formData.append("compareAtPrice", String(compareAtPrice));
-    }
-    if (hasVariants) {
-      formData.append("variants", JSON.stringify(variants));
-    } else {
-      formData.append("stock", String(Number(data.stock) || 0));
-    }
-    images.forEach((img) => formData.append("images", img.file));
-    if (validUrls.length > 0) {
-      formData.append("imageUrls", JSON.stringify(validUrls));
-    }
-
-    const tag = mode === "edit" ? "[Update product]" : "[Add product]";
-    console.log(`${tag} values:`, {
-      ...data,
-      description,
-      hasVariants,
-      variants,
-      compareAtPrice,
-      isPublished,
-      isArchived,
-      images: images.map((i) => i.file),
-      imageUrls: validUrls,
-    });
-    console.table(
-      images.map((i) => ({
-        name: i.file.name,
-        type: i.file.type,
-        sizeKB: Math.round(i.file.size / 1024),
-      })),
-    );
-    console.log(`${tag} FormData entries:`, [...formData.entries()]);
-
-    toast.success(
-      mode === "edit"
-        ? "Changes logged to the console."
-        : "Product logged to the console.",
-    );
-    setIsSubmitting(false);
-    onDone();
-  };
-
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
@@ -435,50 +359,68 @@ export const AddProductForm = ({
       <div className="flex-1 space-y-8 overflow-y-auto px-6 pb-8">
         <Section title="Basic info">
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="productName">
-                Product name <span className="text-red-500">*</span>
-              </Label>
+            <Field
+              label="Product name"
+              htmlFor="productName"
+              required
+              error={errors.productName?.message}
+            >
               <Input
                 id="productName"
                 placeholder="e.g. Oud Attar 12ml"
                 {...register("productName", {
                   required: "Product name is required",
                   minLength: { value: 2, message: "At least 2 characters" },
+                  maxLength: { value: 150, message: "Maximum 150 characters" },
                 })}
               />
-              <ErrorText message={errors.productName?.message} />
-            </div>
+            </Field>
 
-            <div className="space-y-2">
-              <Label htmlFor="brand">
-                Brand{" "}
-                <span className="text-xs font-normal text-muted-foreground">
-                  (optional)
-                </span>
-              </Label>
+            <Field
+              label="Brand"
+              htmlFor="brand"
+              hint="(optional)"
+              error={errors.brand?.message}
+            >
               <Input
                 id="brand"
                 placeholder="e.g. Apple, or your own brand"
-                {...register("brand")}
+                {...register("brand", {
+                  maxLength: { value: 80, message: "Maximum 80 characters" },
+                })}
               />
-            </div>
+            </Field>
 
-            <div className="space-y-2">
-              <Label htmlFor="category">
-                Category <span className="text-red-500">*</span>
-              </Label>
+            <Field
+              label="Category"
+              htmlFor="category"
+              required
+              error={
+                errors.category?.message ||
+                (categoriesError ? "Could not load categories." : undefined)
+              }
+            >
               <Controller
                 name="category"
                 control={control}
                 rules={{ required: "Category is required" }}
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled={categoriesLoading}
+                  >
                     <SelectTrigger id="category" className="w-full">
-                      <SelectValue placeholder="Select category" />
+                      <SelectValue
+                        placeholder={
+                          categoriesLoading
+                            ? "Loading categories..."
+                            : "Select category"
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      {categoryOptions.map((cat) => (
+                      {categories.map((cat) => (
                         <SelectItem key={cat._id} value={cat._id}>
                           {cat.name}
                         </SelectItem>
@@ -487,51 +429,74 @@ export const AddProductForm = ({
                   </Select>
                 )}
               />
-              <ErrorText message={errors.category?.message} />
-            </div>
+            </Field>
 
-            <div className="space-y-2">
-              <Label htmlFor="sku">SKU</Label>
-              <Input id="sku" placeholder="SKU-123456" {...register("sku")} />
-            </div>
+            <Field
+              label="Tags"
+              htmlFor="tags"
+              hint="(optional, comma separated)"
+              error={errors.tags?.message}
+            >
+              <Input
+                id="tags"
+                placeholder="e.g. oud, attar, gift"
+                {...register("tags", { validate: tagsError })}
+              />
+            </Field>
           </div>
+
+          <Field
+            label="Short description"
+            htmlFor="shortDescription"
+            hint="(optional, max 300 characters)"
+            error={errors.shortDescription?.message}
+          >
+            <Input
+              id="shortDescription"
+              placeholder="One line shown on the product card"
+              {...register("shortDescription", {
+                maxLength: { value: 300, message: "Maximum 300 characters" },
+              })}
+            />
+          </Field>
         </Section>
 
         <Section title="Pricing and stock">
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="price">
-                {hasVariants ? "Base price (৳)" : "Price (৳)"}{" "}
-                <span className="text-red-500">*</span>
-              </Label>
+            <Field
+              label={hasVariants ? "Base price (৳)" : "Price (৳)"}
+              htmlFor="price"
+              required
+              hint={
+                hasVariants ? "(used when a variant has no price)" : undefined
+              }
+              error={errors.price?.message}
+            >
               <Input
                 id="price"
                 type="number"
+                inputMode="decimal"
+                min={0}
                 step="any"
-                placeholder="120000"
+                placeholder="1200"
                 {...register("price", {
                   required: "Price is required",
                   min: { value: 0, message: "Price cannot be negative" },
                 })}
               />
-              {hasVariants && (
-                <p className="text-xs text-muted-foreground">
-                  Used when a variant has no price
-                </p>
-              )}
-              <ErrorText message={errors.price?.message} />
-            </div>
+            </Field>
 
-            <div className="space-y-2">
-              <Label htmlFor="costPrice">
-                Cost price (৳){" "}
-                <span className="text-xs font-normal text-muted-foreground">
-                  (what you paid)
-                </span>
-              </Label>
+            <Field
+              label="Cost price (৳)"
+              htmlFor="costPrice"
+              hint="(what you paid)"
+              error={errors.costPrice?.message}
+            >
               <Input
                 id="costPrice"
                 type="number"
+                inputMode="decimal"
+                min={0}
                 step="any"
                 placeholder="0"
                 {...register("costPrice", {
@@ -543,90 +508,98 @@ export const AddProductForm = ({
                   Selling price is below cost, so this will sell at a loss.
                 </p>
               )}
-              <ErrorText message={errors.costPrice?.message} />
-            </div>
+            </Field>
 
             {!hasVariants && (
-              <div className="space-y-2">
-                <Label htmlFor="stock">
-                  Stock quantity <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="stock"
-                  type="number"
-                  placeholder="25"
-                  {...register("stock", {
-                    validate: (v) =>
-                      hasVariants || v !== "" || "Stock is required",
-                    min: { value: 0, message: "Stock cannot be negative" },
-                  })}
-                />
-                <ErrorText message={errors.stock?.message} />
-              </div>
+              <>
+                <Field
+                  label="Stock quantity"
+                  htmlFor="stock"
+                  required
+                  error={errors.stock?.message}
+                >
+                  <Input
+                    id="stock"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    placeholder="25"
+                    {...register("stock", {
+                      validate: {
+                        required: (v) => v !== "" || "Stock is required",
+                        whole,
+                      },
+                      min: { value: 0, message: "Stock cannot be negative" },
+                    })}
+                  />
+                </Field>
+
+                <Field
+                  label="SKU"
+                  htmlFor="sku"
+                  hint="(optional, made automatically if empty)"
+                  error={errors.sku?.message}
+                >
+                  <Input
+                    id="sku"
+                    placeholder="OUD-12ML"
+                    {...register("sku", {
+                      pattern: {
+                        value: /^[A-Za-z0-9][A-Za-z0-9-]{1,58}[A-Za-z0-9]$|^$/,
+                        message: "3-60 characters: letters, numbers and hyphen",
+                      },
+                    })}
+                  />
+                </Field>
+              </>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="lowStockThreshold">
-                Low stock alert below{" "}
-                <span className="text-xs font-normal text-muted-foreground">
-                  (default: 5)
-                </span>
-              </Label>
+            <Field
+              label="Low stock alert at or below"
+              htmlFor="lowStockThreshold"
+              hint="(default: 5)"
+              error={errors.lowStockThreshold?.message}
+            >
               <Input
                 id="lowStockThreshold"
                 type="number"
+                inputMode="numeric"
+                min={0}
+                max={1000}
                 placeholder="5"
                 {...register("lowStockThreshold", {
+                  validate: { whole },
                   min: { value: 0, message: "Min 0" },
+                  max: { value: 1000, message: "Max 1000" },
                 })}
               />
-              <ErrorText message={errors.lowStockThreshold?.message} />
-            </div>
+            </Field>
 
-            <div className="space-y-2">
-              <Label htmlFor="discount">Discount (%)</Label>
+            <Field
+              label="Discount (%)"
+              htmlFor="discount"
+              error={errors.discount?.message}
+            >
               <Input
                 id="discount"
                 type="number"
+                inputMode="decimal"
+                min={0}
+                max={99}
+                step="any"
                 placeholder="10"
                 {...register("discount", {
                   min: { value: 0, message: "Min 0%" },
-                  max: { value: 100, message: "Max 100%" },
+                  max: { value: 99, message: "Max 99%" },
                 })}
               />
-              <ErrorText message={errors.discount?.message} />
-            </div>
-
-            <div className="space-y-2">
-              <Label
-                htmlFor="ratingAverage"
-                className="flex items-center gap-1.5"
-              >
-                <Star className="h-3.5 w-3.5 text-yellow-500" />
-                Initial rating{" "}
-                <span className="text-xs font-normal text-muted-foreground">
-                  (optional, 0 to 5)
-                </span>
-              </Label>
-              <Input
-                id="ratingAverage"
-                type="number"
-                step="0.1"
-                placeholder="0"
-                {...register("ratingAverage", {
-                  min: { value: 0, message: "Min 0" },
-                  max: { value: 5, message: "Max 5" },
-                })}
-              />
-              <ErrorText message={errors.ratingAverage?.message} />
-            </div>
+            </Field>
           </div>
         </Section>
 
         <Section title="Visibility">
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
+            <Field label="Status" htmlFor="status">
               <Controller
                 name="status"
                 control={control}
@@ -636,16 +609,16 @@ export const AddProductForm = ({
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="draft">Draft (hidden)</SelectItem>
+                      <SelectItem value="active">Published</SelectItem>
                       <SelectItem value="archived">Archived</SelectItem>
                     </SelectContent>
                   </Select>
                 )}
               />
-            </div>
+            </Field>
 
-            <div className="space-y-2">
-              <Label htmlFor="badge">Badge</Label>
+            <Field label="Badge" htmlFor="badge">
               <Controller
                 name="badge"
                 control={control}
@@ -665,46 +638,7 @@ export const AddProductForm = ({
                   </Select>
                 )}
               />
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex items-center gap-3">
-              <Controller
-                name="isPublished"
-                control={control}
-                render={({ field }) => (
-                  <Switch
-                    id="isPublished"
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                )}
-              />
-              <Label htmlFor="isPublished" className="cursor-pointer">
-                Publish this product
-              </Label>
-            </div>
-            <div className="flex items-center gap-3">
-              <Controller
-                name="isFeatured"
-                control={control}
-                render={({ field }) => (
-                  <Switch
-                    id="isFeatured"
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                )}
-              />
-              <Label
-                htmlFor="isFeatured"
-                className="flex cursor-pointer items-center gap-1.5"
-              >
-                <Star className="h-3.5 w-3.5 text-yellow-500" />
-                Mark as featured
-              </Label>
-            </div>
+            </Field>
           </div>
         </Section>
 
@@ -729,6 +663,7 @@ export const AddProductForm = ({
                     <Input
                       placeholder="e.g. S, M, L or 128GB"
                       value={sizeInput}
+                      maxLength={30}
                       onChange={(e) => setSizeInput(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
@@ -759,6 +694,7 @@ export const AddProductForm = ({
                     <Input
                       placeholder="e.g. Black, Silver"
                       value={colorInput}
+                      maxLength={30}
                       onChange={(e) => setColorInput(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
@@ -820,9 +756,11 @@ export const AddProductForm = ({
                               min: { value: 0, message: "Min 0" },
                             })}
                           />
-                          <ErrorText
-                            message={errors.variants?.[index]?.price?.message}
-                          />
+                          {errors.variants?.[index]?.price?.message && (
+                            <p className="text-xs text-red-500">
+                              {errors.variants[index]?.price?.message}
+                            </p>
+                          )}
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Cost (৳)</Label>
@@ -834,11 +772,11 @@ export const AddProductForm = ({
                               min: { value: 0, message: "Min 0" },
                             })}
                           />
-                          <ErrorText
-                            message={
-                              errors.variants?.[index]?.costPrice?.message
-                            }
-                          />
+                          {errors.variants?.[index]?.costPrice?.message && (
+                            <p className="text-xs text-red-500">
+                              {errors.variants[index]?.costPrice?.message}
+                            </p>
+                          )}
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">
@@ -848,13 +786,18 @@ export const AddProductForm = ({
                             type="number"
                             placeholder="0"
                             {...register(`variants.${index}.stock`, {
-                              required: "Required",
+                              validate: {
+                                required: (v) => v !== "" || "Required",
+                                whole,
+                              },
                               min: { value: 0, message: "Min 0" },
                             })}
                           />
-                          <ErrorText
-                            message={errors.variants?.[index]?.stock?.message}
-                          />
+                          {errors.variants?.[index]?.stock?.message && (
+                            <p className="text-xs text-red-500">
+                              {errors.variants[index]?.stock?.message}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -866,49 +809,60 @@ export const AddProductForm = ({
         </Section>
 
         <Section title={`Images (max ${MAX_IMAGES})`}>
-          <ImageUpload value={images} onChange={setImages} max={MAX_IMAGES} />
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>Or add image links</Label>
-              {imageUrls.length < MAX_IMAGES - images.length && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setImageUrls([...imageUrls, ""])}
-                >
-                  <ImageIcon className="mr-2 h-3 w-3" />
-                  Add link
-                </Button>
-              )}
-            </div>
-            {imageUrls.map((url, index) => (
-              <div key={index} className="flex gap-2">
-                <Input
-                  placeholder="https://example.com/image.jpg"
-                  value={url}
-                  onChange={(e) => updateImageUrl(index, e.target.value)}
-                />
-                {imageUrls.length > 1 && (
-                  <Button
+          {existingImages.length > 0 && (
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+              {existingImages.map((img, index) => (
+                <div key={img.publicId} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={img.url}
+                    alt="Product"
+                    className="h-28 w-full rounded-lg border object-cover"
+                  />
+                  {index === 0 && (
+                    <span className="absolute bottom-1 left-1 rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-medium shadow-sm">
+                      Cover
+                    </span>
+                  )}
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeImageUrl(index)}
+                    onClick={() =>
+                      setExistingImages((prev) =>
+                        prev.filter((e) => e.publicId !== img.publicId),
+                      )
+                    }
+                    aria-label="Remove image"
+                    className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-background/90 shadow-sm transition-colors hover:bg-destructive hover:text-white"
                   >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <ImageUpload
+            value={images}
+            onChange={(items) => {
+              setImages(items);
+              setImageError("");
+            }}
+            max={MAX_IMAGES - existingImages.length}
+            error={imageError}
+          />
         </Section>
 
         <Section title="Description">
           <Controller
             name="description"
             control={control}
+            rules={{
+              validate: (v) =>
+                isEmptyHtml(v)
+                  ? "Description is required"
+                  : v.length <= MAX_DESCRIPTION ||
+                    `Description is too long (${v.length}/${MAX_DESCRIPTION} characters)`,
+            }}
             render={({ field }) => (
               <DescriptionEditor
                 value={field.value}
@@ -916,6 +870,9 @@ export const AddProductForm = ({
               />
             )}
           />
+          {errors.description?.message && (
+            <p className="text-xs text-red-500">{errors.description.message}</p>
+          )}
         </Section>
       </div>
 
@@ -924,17 +881,17 @@ export const AddProductForm = ({
           type="button"
           variant="outline"
           onClick={onDone}
-          disabled={isSubmitting}
+          disabled={save.isPending}
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? (
+        <Button type="submit" disabled={save.isPending}>
+          {save.isPending ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {mode === "edit" ? "Saving..." : "Adding..."}
+              {isEdit ? "Saving..." : "Adding..."}
             </>
-          ) : mode === "edit" ? (
+          ) : isEdit ? (
             "Save changes"
           ) : (
             "Add product"
