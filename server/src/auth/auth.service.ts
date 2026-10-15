@@ -520,7 +520,21 @@ export class AuthService {
       data: { qrCode: qrCodeDataUrl, secret },
     };
   }
+  // ─── Current user ───
 
+  async getProfile(userId: string) {
+    const user = await this.userService.getUserById(userId);
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    // DB theke porchi (RolesGuard er moto), tai role bodlale sathe sathe effective
+    const userType = await this.userService.getUserType(userId);
+
+    return { userId, email: user.email, userType };
+  }
+  
   async enableTwoFactor(userId: string, dto: Enable2faDto) {
     const user = await this.userService.getUserForTwoFactorSetup(userId);
 

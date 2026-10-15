@@ -170,8 +170,13 @@ export class AuthController {
   @ApiOperation({ summary: 'Get current user profile' })
   @UseGuards(JwtAccessGuard)
   @Get('me')
-  getProfile(@Req() req: Request) {
-    return { message: 'Profile fetched successfully.', data: req.user };
+  async getProfile(@Req() req: Request) {
+    const user = req.user as { userId: string };
+
+    return {
+      message: 'Profile fetched successfully.',
+      data: await this.authService.getProfile(user.userId),
+    };
   }
 
   // ─── Password Reset ───
