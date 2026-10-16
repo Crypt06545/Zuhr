@@ -4,6 +4,13 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { Toaster } from "sonner";
 
+import Marquee from "@/components/common/Marquee";
+import UtilityBar from "@/components/common/navbar/Utilitybar";
+import Navbar from "@/components/common/navbar/Navbar";
+
+import MobileBottomNav from "@/components/common/navbar/MobileBottomNav";
+import Footer from "@/components/common/footer/Footer";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -27,8 +34,25 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <Providers>
-          {" "}
-          {children} <Toaster richColors position="top-center" />
+          {/* Marquee — scroll away */}
+          <Marquee />
+
+          {/* UtilityBar — scroll away */}
+          <UtilityBar />
+
+          {/* Navbar — sticky top */}
+          <Navbar />
+
+          {/* Page content */}
+          <main className="flex-1">{children}</main>
+
+          {/* Footer */}
+          <Footer />
+
+          {/* Mobile bottom nav (internal lg:hidden) */}
+          <MobileBottomNav />
+
+          <Toaster richColors position="top-center" />
         </Providers>
       </body>
     </html>

@@ -1,10 +1,9 @@
-import Marquee from "@/components/common/Marquee";
-import React from "react";
+import HeroSection from "@/components/home/HeroSection";
 
 const HomePage = () => {
   return (
-    <main className="h-screen w-screen overflow-hidden">
-      <Marquee/>
+    <main className="min-h-screen w-full">
+      {/* <HeroSection /> */}
     </main>
   );
 };
