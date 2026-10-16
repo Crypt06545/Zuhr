@@ -8,7 +8,7 @@ import { Package, RotateCcw, ShieldCheck, Truck } from "lucide-react";
 import { prefersReducedMotion } from "@/hooks/UseAuthAnimation";
 
 // এইখানে নিজের brand name আর text বসাও
-const BRAND_NAME = "Brand";
+const BRAND_NAME = "ZUHR";
 const HEADLINE = "Shop your favorites, delivered to your door.";
 const SUBTEXT = "Sign in to track orders, save favorites and check out faster.";
 
@@ -171,9 +171,6 @@ const AuthLayout = ({ children }: { children: React.ReactNode }) => {
         />
 
         {/* Top */}
-        <div data-brand className="relative">
-          <BrandMark />
-        </div>
 
         {/* Middle */}
         <div className="relative">

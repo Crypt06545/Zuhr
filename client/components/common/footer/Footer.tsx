@@ -1,14 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import {
-
-  MapPin,
-  Phone,
-  Mail,
-  Send,
-  Globe,
-} from "lucide-react";
+import Image from "next/image";
+import { MapPin, Phone, Mail, Send, Globe } from "lucide-react";
 
 const FOOTER_LINKS = {
   shop: {
@@ -25,7 +19,6 @@ const FOOTER_LINKS = {
     title: "Help",
     links: [
       { label: "Track Order", href: "/track-order" },
-      { label: "Shipping Info", href: "/shipping" },
       { label: "Returns", href: "/returns" },
       { label: "FAQ", href: "/faq" },
       { label: "Contact Us", href: "/contact" },
@@ -35,7 +28,6 @@ const FOOTER_LINKS = {
     title: "Company",
     links: [
       { label: "About Us", href: "/about" },
-      { label: "Careers", href: "/careers" },
       { label: "Blog", href: "/blog" },
       { label: "Privacy Policy", href: "/privacy" },
       { label: "Terms of Service", href: "/terms" },
@@ -52,93 +44,63 @@ const SOCIALS = [
 
 const Footer = () => {
   return (
-    <footer className="mt-20 border-t border-border bg-card">
-      {/* Top Section */}
-      <div className="container mx-auto px-4 py-12 lg:px-6 lg:py-16">
-        <div className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-12">
+    <footer className="mt-12 border-t border-border bg-card">
+      {/* ============ TOP ============ */}
+      <div className="container mx-auto px-4 py-8 lg:px-6 lg:py-12">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-6">
           {/* Brand + Newsletter */}
           <div className="lg:col-span-4">
             <Link
               href="/"
               aria-label="Home"
-              className="inline-flex items-center"
+              className="inline-flex items-center transition-opacity hover:opacity-80"
             >
-              <svg
-                width="120"
-                height="40"
-                viewBox="0 0 120 40"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
+              <Image
+                src="/ZUHR_logo_transparent.svg"
+                alt="ZUHR"
+                width={200}
+                height={100}
                 className="h-9 w-auto"
-                aria-hidden="true"
-              >
-                <rect
-                  x="1"
-                  y="1"
-                  width="118"
-                  height="38"
-                  rx="6"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  className="text-primary"
-                />
-                <text
-                  x="60"
-                  y="26"
-                  textAnchor="middle"
-                  fontSize="16"
-                  fontWeight="700"
-                  fill="currentColor"
-                  className="text-primary"
-                >
-                  LOGO
-                </text>
-              </svg>
+              />
             </Link>
 
-            <p className="mt-4 max-w-sm text-[13px] leading-relaxed text-muted-foreground">
-              Your trusted destination for premium products at unbeatable
-              prices. Fast delivery, easy returns, and 24/7 support.
+            <p className="mt-3 max-w-xs text-[12.5px] leading-relaxed text-muted-foreground">
+              Premium products at unbeatable prices. Fast delivery, easy
+              returns, 24/7 support.
             </p>
 
-            {/* Newsletter */}
-            <div className="mt-6">
-              <p className="mb-2 text-[13px] font-semibold text-foreground">
-                Subscribe to our newsletter
-              </p>
-              <form
-                onSubmit={(e) => e.preventDefault()}
-                className="flex w-full max-w-sm items-center overflow-hidden rounded-full border border-border bg-background"
+            <form
+              onSubmit={(e) => e.preventDefault()}
+              className="mt-4 flex w-full max-w-xs items-center overflow-hidden rounded-full border border-border bg-background"
+            >
+              <input
+                type="email"
+                placeholder="Your email"
+                className="min-w-0 flex-1 bg-transparent px-3.5 py-2 text-[12.5px] text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
+              />
+              <button
+                type="submit"
+                aria-label="Subscribe"
+                className="m-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90"
               >
-                <input
-                  type="email"
-                  placeholder="Enter your email"
-                  className="flex-1 bg-transparent px-4 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  aria-label="Subscribe"
-                  className="m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90"
-                >
-                  <Send size={15} strokeWidth={2} aria-hidden="true" />
-                </button>
-              </form>
-            </div>
+                <Send size={13} strokeWidth={2.2} aria-hidden="true" />
+              </button>
+            </form>
           </div>
 
-          {/* Links Columns */}
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:col-span-5 lg:col-start-6">
+          {/* Links — 3 columns on mobile too */}
+          <div className="grid grid-cols-3 gap-4 lg:col-span-5 lg:gap-6">
             {Object.entries(FOOTER_LINKS).map(([key, section]) => (
               <div key={key}>
-                <h3 className="mb-4 text-[13px] font-bold uppercase tracking-wide text-foreground">
+                <h3 className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-foreground">
                   {section.title}
                 </h3>
-                <ul className="space-y-2.5">
+                <ul className="space-y-1.5">
                   {section.links.map((link) => (
                     <li key={link.href}>
                       <Link
                         href={link.href}
-                        className="text-[13px] text-muted-foreground transition-colors hover:text-primary"
+                        className="text-[12px] text-muted-foreground transition-colors hover:text-primary"
                       >
                         {link.label}
                       </Link>
@@ -149,29 +111,25 @@ const Footer = () => {
             ))}
           </div>
 
-          {/* Contact Info */}
+          {/* Contact + Socials */}
           <div className="lg:col-span-3">
-            <h3 className="mb-4 text-[13px] font-bold uppercase tracking-wide text-foreground">
-              Contact
+            <h3 className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-foreground">
+              Get in Touch
             </h3>
-            <ul className="space-y-3 text-[13px] text-muted-foreground">
-              <li className="flex items-start gap-2.5">
+            <ul className="space-y-2 text-[12px] text-muted-foreground">
+              <li className="flex items-start gap-2">
                 <MapPin
-                  size={16}
-                  strokeWidth={1.9}
+                  size={13}
+                  strokeWidth={2}
                   className="mt-0.5 shrink-0 text-primary"
                   aria-hidden="true"
                 />
-                <span>
-                  123 Gulshan Avenue, Dhaka 1212,
-                  <br />
-                  Bangladesh
-                </span>
+                <span>123 Gulshan Avenue, Dhaka 1212</span>
               </li>
-              <li className="flex items-center gap-2.5">
+              <li className="flex items-center gap-2">
                 <Phone
-                  size={16}
-                  strokeWidth={1.9}
+                  size={13}
+                  strokeWidth={2}
                   className="shrink-0 text-primary"
                   aria-hidden="true"
                 />
@@ -182,24 +140,23 @@ const Footer = () => {
                   +880 1700-000000
                 </a>
               </li>
-              <li className="flex items-center gap-2.5">
+              <li className="flex items-center gap-2">
                 <Mail
-                  size={16}
-                  strokeWidth={1.9}
+                  size={13}
+                  strokeWidth={2}
                   className="shrink-0 text-primary"
                   aria-hidden="true"
                 />
                 <a
                   href="mailto:support@example.com"
-                  className="transition-colors hover:text-primary"
+                  className="truncate transition-colors hover:text-primary"
                 >
                   support@example.com
                 </a>
               </li>
             </ul>
 
-            {/* Socials */}
-            <div className="mt-6 flex items-center gap-3">
+            <div className="mt-4 flex items-center gap-2">
               {SOCIALS.map(({ icon: Icon, label, href }) => (
                 <a
                   key={label}
@@ -207,9 +164,9 @@ const Footer = () => {
                   aria-label={label}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
                 >
-                  <Icon size={16} strokeWidth={1.9} aria-hidden="true" />
+                  <Icon size={13} strokeWidth={2} aria-hidden="true" />
                 </a>
               ))}
             </div>
@@ -217,12 +174,14 @@ const Footer = () => {
         </div>
       </div>
 
-      {/* Bottom Bar */}
+      {/* ============ BOTTOM BAR ============ */}
       <div className="border-t border-border">
-        <div className="container mx-auto flex flex-col items-center justify-between gap-3 px-4 py-5 text-[12px] text-muted-foreground sm:flex-row lg:px-6">
-          <p>© {new Date().getFullYear()} Your Company. All rights reserved.</p>
+        <div className="container mx-auto flex flex-col items-center gap-2 px-4 py-3.5 text-[11.5px] text-muted-foreground sm:flex-row sm:justify-between lg:px-6">
+          <p className="text-center sm:text-left">
+            © {new Date().getFullYear()} ZUHR. All rights reserved.
+          </p>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <Link
               href="/privacy"
               className="transition-colors hover:text-primary"
@@ -241,18 +200,13 @@ const Footer = () => {
             <span aria-hidden="true" className="text-border">
               •
             </span>
-            <Link
-              href="/sitemap"
-              className="transition-colors hover:text-primary"
-            >
-              Sitemap
-            </Link>
+            
           </div>
         </div>
       </div>
 
-      {/* Mobile bottom nav space */}
-      <div className="h-16 lg:hidden" aria-hidden="true" />
+      {/* Space for mobile bottom nav — 68px bar + 31px floating cart = ~100px */}
+      <div className="h-28 lg:hidden" aria-hidden="true" />
     </footer>
   );
 };
