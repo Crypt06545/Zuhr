@@ -13,6 +13,7 @@ import { CategoriesModule } from './categories/categories.module.js';
 import { CloudinaryModule } from './common/cloudinary/cloudinary.module.js';
 import { ProductsModule } from './products/products.module.js';
 import { RedisModule } from './common/redis/redis.module.js';
+import { OrdersModule } from './orders/orders.module.js';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { RedisModule } from './common/redis/redis.module.js';
     CategoriesModule,
     CloudinaryModule,
     ProductsModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
