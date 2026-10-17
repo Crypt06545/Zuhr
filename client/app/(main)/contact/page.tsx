@@ -1,18 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Mail,
   MessageCircle,
@@ -20,6 +15,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   Clock,
+  ChevronDown,
   type LucideIcon,
 } from "lucide-react";
 
@@ -93,13 +89,13 @@ const SUBJECTS = [
 
 const ContactPage = () => {
   const [submitted, setSubmitted] = useState(false);
+  const scope = useRef<HTMLDivElement>(null);
 
   const {
     register,
     handleSubmit,
     reset,
     watch,
-    setValue,
     formState: { errors, isSubmitting },
   } = useForm<ContactFormData>({
     mode: "onBlur",
@@ -115,22 +111,160 @@ const ContactPage = () => {
     reset();
   };
 
+  /* ============ GSAP ENTRANCE ANIMATION ============ */
+  useGSAP(
+    () => {
+      // Respect reduced motion preference
+      const prefersReduced = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      if (prefersReduced) return;
+
+      const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+
+      // Header animation
+      tl.from("[data-anim='header-line']", {
+        width: 0,
+        duration: 0.7,
+        ease: "power2.inOut",
+      })
+        .from(
+          "[data-anim='header-label']",
+          { x: -16, opacity: 0, duration: 0.6 },
+          "-=0.5",
+        )
+        .from(
+          "[data-anim='header-title']",
+          { y: 30, opacity: 0, duration: 0.9 },
+          "-=0.4",
+        )
+        .from(
+          "[data-anim='header-sub']",
+          { y: 20, opacity: 0, duration: 0.7 },
+          "-=0.6",
+        )
+        // Channels stagger
+        .from(
+          "[data-anim='channel']",
+          {
+            y: 30,
+            opacity: 0,
+            duration: 0.7,
+            stagger: 0.12,
+          },
+          "-=0.3",
+        )
+        // FAQ
+        .from(
+          "[data-anim='faq-heading']",
+          { y: 16, opacity: 0, duration: 0.5 },
+          "-=0.3",
+        )
+        .from(
+          "[data-anim='faq-item']",
+          {
+            y: 16,
+            opacity: 0,
+            duration: 0.5,
+            stagger: 0.1,
+          },
+          "-=0.3",
+        )
+        // Form fields stagger
+        .from(
+          "[data-anim='form-row']",
+          {
+            y: 24,
+            opacity: 0,
+            duration: 0.6,
+            stagger: 0.12,
+          },
+          "-=0.6",
+        )
+        .from(
+          "[data-anim='form-submit']",
+          { y: 16, opacity: 0, duration: 0.5 },
+          "-=0.2",
+        );
+    },
+    { scope },
+  );
+
+  /* ============ SUCCESS CARD ANIMATION ============ */
+  useGSAP(
+    () => {
+      if (!submitted) return;
+      const prefersReduced = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      if (prefersReduced) return;
+
+      const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+
+      tl.from("[data-anim='success-card']", {
+        y: 24,
+        opacity: 0,
+        scale: 0.96,
+        duration: 0.7,
+      })
+        .from(
+          "[data-anim='success-icon']",
+          {
+            scale: 0,
+            rotate: -90,
+            duration: 0.7,
+            ease: "back.out(1.7)",
+          },
+          "-=0.4",
+        )
+        .from(
+          "[data-anim='success-text']",
+          {
+            y: 12,
+            opacity: 0,
+            duration: 0.5,
+            stagger: 0.1,
+          },
+          "-=0.4",
+        )
+        .from(
+          "[data-anim='success-btn']",
+          { y: 10, opacity: 0, duration: 0.4 },
+          "-=0.3",
+        );
+    },
+    { dependencies: [submitted], scope },
+  );
+
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-14 md:px-8 lg:py-24">
+    <div
+      ref={scope}
+      className="mx-auto w-full max-w-6xl px-4 py-14 md:px-8 lg:py-24"
+    >
       {/* ============ HEADER ============ */}
       <header className="mb-14 max-w-2xl md:mb-20">
         <span className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-          <span className="h-px w-6 bg-primary" aria-hidden="true" />
-          Concierge &amp; Support
+          <span
+            data-anim="header-line"
+            className="h-px w-6 bg-primary"
+            aria-hidden="true"
+          />
+          <span data-anim="header-label">Concierge &amp; Support</span>
         </span>
 
-        <h1 className="mt-4 font-heading text-4xl font-light tracking-tight text-foreground sm:text-5xl lg:text-[56px]">
+        <h1
+          data-anim="header-title"
+          className="mt-4 font-heading text-4xl font-light tracking-tight text-foreground sm:text-5xl lg:text-[56px]"
+        >
           Get in <span className="text-primary">Touch</span>
         </h1>
 
-        <p className="mt-5 max-w-xl text-[15px] leading-relaxed text-muted-foreground">
-          Have a question about our products, custom orders, or delivery
-          status? Reach out directly — our team is here to help.
+        <p
+          data-anim="header-sub"
+          className="mt-5 max-w-xl text-[15px] leading-relaxed text-muted-foreground"
+        >
+          Have a question about our products, custom orders, or delivery status?
+          Reach out directly — our team is here to help.
         </p>
       </header>
 
@@ -139,70 +273,76 @@ const ContactPage = () => {
         {/* ============ LEFT: CHANNELS + FAQ ============ */}
         <div className="space-y-12 lg:col-span-5">
           <div className="space-y-7">
-            {CHANNELS.map(({ icon: Icon, title, description, action, note }) => (
-              <div
-                key={title}
-                className="border-b border-border pb-6 last:border-b-0"
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                    <Icon
-                      size={15}
-                      strokeWidth={1.9}
-                      className="text-primary"
-                      aria-hidden="true"
-                    />
-                  </span>
-                  <h3 className="text-[12px] font-semibold uppercase tracking-[0.14em] text-foreground">
-                    {title}
-                  </h3>
-                </div>
+            {CHANNELS.map(
+              ({ icon: Icon, title, description, action, note }) => (
+                <div
+                  key={title}
+                  data-anim="channel"
+                  className="border-b border-border pb-6 last:border-b-0"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                      <Icon
+                        size={15}
+                        strokeWidth={1.9}
+                        className="text-primary"
+                        aria-hidden="true"
+                      />
+                    </span>
+                    <h3 className="text-[12px] font-semibold uppercase tracking-[0.14em] text-foreground">
+                      {title}
+                    </h3>
+                  </div>
 
-                <p className="mt-3 text-[13.5px] leading-relaxed text-muted-foreground">
-                  {description}
-                </p>
-
-                {action && (
-                  <a
-                    href={action.href}
-                    target={
-                      action.href.startsWith("http") ? "_blank" : undefined
-                    }
-                    rel={
-                      action.href.startsWith("http")
-                        ? "noopener noreferrer"
-                        : undefined
-                    }
-                    className="group mt-3 inline-flex items-center gap-1.5 text-[13.5px] font-medium text-primary transition-colors hover:text-primary/80"
-                  >
-                    {action.label}
-                    <ArrowUpRight
-                      size={13}
-                      strokeWidth={2.2}
-                      className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                      aria-hidden="true"
-                    />
-                  </a>
-                )}
-
-                {note && (
-                  <p className="mt-2.5 inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground/80">
-                    <Clock size={11} strokeWidth={2} aria-hidden="true" />
-                    {note}
+                  <p className="mt-3 text-[13.5px] leading-relaxed text-muted-foreground">
+                    {description}
                   </p>
-                )}
-              </div>
-            ))}
+
+                  {action && (
+                    <a
+                      href={action.href}
+                      target={
+                        action.href.startsWith("http") ? "_blank" : undefined
+                      }
+                      rel={
+                        action.href.startsWith("http")
+                          ? "noopener noreferrer"
+                          : undefined
+                      }
+                      className="group mt-3 inline-flex items-center gap-1.5 text-[13.5px] font-medium text-primary transition-colors hover:text-primary/80"
+                    >
+                      {action.label}
+                      <ArrowUpRight
+                        size={13}
+                        strokeWidth={2.2}
+                        className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                        aria-hidden="true"
+                      />
+                    </a>
+                  )}
+
+                  {note && (
+                    <p className="mt-2.5 inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground/80">
+                      <Clock size={11} strokeWidth={2} aria-hidden="true" />
+                      {note}
+                    </p>
+                  )}
+                </div>
+              ),
+            )}
           </div>
 
           {/* FAQ */}
           <div className="pt-2">
-            <h4 className="mb-5 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <h4
+              data-anim="faq-heading"
+              className="mb-5 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground"
+            >
               Frequently Asked
             </h4>
             <div className="space-y-5">
               {FAQS.map(({ q, a }) => (
-                <div key={q}>
+                <div key={q} data-anim="faq-item">
                   <p className="text-[13.5px] font-medium text-foreground">
                     {q}
                   </p>
@@ -215,7 +355,7 @@ const ContactPage = () => {
           </div>
         </div>
 
-        {/* ============ RIGHT: FORM ============ */}
+        {/* ============ RIGHT: FORM / SUCCESS ============ */}
         <div className="lg:col-span-7">
           {submitted ? (
             <SuccessCard onReset={() => setSubmitted(false)} />
@@ -226,7 +366,7 @@ const ContactPage = () => {
               noValidate
             >
               {/* Name + Email */}
-              <div className="grid gap-6 sm:grid-cols-2">
+              <div data-anim="form-row" className="grid gap-6 sm:grid-cols-2">
                 <Field id="name" label="Your Name" error={errors.name?.message}>
                   <Input
                     id="name"
@@ -260,44 +400,37 @@ const ContactPage = () => {
               </div>
 
               {/* Subject + Order # */}
-              <div className="grid gap-6 sm:grid-cols-2">
+              <div data-anim="form-row" className="grid gap-6 sm:grid-cols-2">
                 <Field
                   id="subject"
                   label="Topic"
                   error={errors.subject?.message}
                 >
-                  <Select
-                    onValueChange={(value) =>
-                      setValue("subject", value, { shouldValidate: true })
-                    }
-                  >
-                    <SelectTrigger
+                  <div className="relative">
+                    <select
                       id="subject"
                       aria-invalid={!!errors.subject}
-                      className="h-11 w-full rounded-lg border-border bg-background focus:border-primary focus:ring-2 focus:ring-primary/20 data-[state=open]:border-primary"
+                      defaultValue=""
+                      className="h-11 w-full appearance-none rounded-lg border border-border bg-background pl-3.5 pr-10 text-[13.5px] text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      {...register("subject", { required: "Select a topic" })}
                     >
-                      <SelectValue placeholder="Select a topic" />
-                    </SelectTrigger>
-                    <SelectContent
-                      position="popper"
-                      className="rounded-lg border-border"
-                    >
+                      <option value="" disabled hidden>
+                        Select a topic
+                      </option>
                       {SUBJECTS.map(({ value, label }) => (
-                        <SelectItem
-                          key={value}
-                          value={value}
-                          className="cursor-pointer rounded-md focus:bg-primary/10 focus:text-primary"
-                        >
+                        <option key={value} value={value}>
                           {label}
-                        </SelectItem>
+                        </option>
                       ))}
-                    </SelectContent>
-                  </Select>
-                  {/* Hidden input so react-hook-form tracks required */}
-                  <input
-                    type="hidden"
-                    {...register("subject", { required: "Select a topic" })}
-                  />
+                    </select>
+
+                    <ChevronDown
+                      size={16}
+                      strokeWidth={2}
+                      className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                  </div>
                 </Field>
 
                 <Field id="orderNumber" label="Order # (Optional)">
@@ -311,43 +444,47 @@ const ContactPage = () => {
               </div>
 
               {/* Message */}
-              <Field
-                id="message"
-                label="Message"
-                error={errors.message?.message}
-                rightMeta={
-                  <span className="text-[10.5px] tabular-nums text-muted-foreground">
-                    {messageLength}/500
-                  </span>
-                }
-              >
-                <Textarea
+              <div data-anim="form-row">
+                <Field
                   id="message"
-                  placeholder="How can we assist you today?"
-                  rows={5}
-                  maxLength={500}
-                  aria-invalid={!!errors.message}
-                  className="resize-none rounded-lg border-border bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20"
-                  {...register("message", {
-                    required: "Message is required",
-                    maxLength: {
-                      value: 500,
-                      message: "Message must be under 500 characters",
-                    },
-                  })}
-                />
-              </Field>
+                  label="Message"
+                  error={errors.message?.message}
+                  rightMeta={
+                    <span className="text-[10.5px] tabular-nums text-muted-foreground">
+                      {messageLength}/500
+                    </span>
+                  }
+                >
+                  <Textarea
+                    id="message"
+                    placeholder="How can we assist you today?"
+                    rows={5}
+                    maxLength={500}
+                    aria-invalid={!!errors.message}
+                    className="min-h-[140px] resize-none rounded-lg border-border bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20"
+                    {...register("message", {
+                      required: "Message is required",
+                      maxLength: {
+                        value: 500,
+                        message: "Message must be under 500 characters",
+                      },
+                    })}
+                  />
+                </Field>
+              </div>
 
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                size="lg"
-                className="h-12 w-full rounded-lg bg-primary text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99] sm:w-auto sm:px-10"
-              >
-                <span className="text-[12px] font-semibold uppercase tracking-[0.16em]">
-                  {isSubmitting ? "Sending..." : "Send Message"}
-                </span>
-              </Button>
+              <div data-anim="form-submit">
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  size="lg"
+                  className="h-12 w-full rounded-lg bg-primary text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99] sm:w-auto sm:px-10"
+                >
+                  <span className="text-[12px] font-semibold uppercase tracking-[0.16em]">
+                    {isSubmitting ? "Sending..." : "Send Message"}
+                  </span>
+                </Button>
+              </div>
             </form>
           )}
         </div>
@@ -389,8 +526,14 @@ const Field = ({ id, label, error, rightMeta, children }: FieldProps) => (
 );
 
 const SuccessCard = ({ onReset }: { onReset: () => void }) => (
-  <div className="rounded-2xl border border-border bg-card p-10 text-center lg:p-14">
-    <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+  <div
+    data-anim="success-card"
+    className="rounded-2xl border border-border bg-card p-10 text-center lg:p-14"
+  >
+    <span
+      data-anim="success-icon"
+      className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10"
+    >
       <CheckCircle2
         size={28}
         strokeWidth={1.8}
@@ -399,21 +542,29 @@ const SuccessCard = ({ onReset }: { onReset: () => void }) => (
       />
     </span>
 
-    <h3 className="mt-5 font-heading text-xl font-semibold text-foreground">
+    <h3
+      data-anim="success-text"
+      className="mt-5 font-heading text-xl font-semibold text-foreground"
+    >
       Message Received
     </h3>
-    <p className="mx-auto mt-2 max-w-sm text-[13.5px] leading-relaxed text-muted-foreground">
+    <p
+      data-anim="success-text"
+      className="mx-auto mt-2 max-w-sm text-[13.5px] leading-relaxed text-muted-foreground"
+    >
       Thank you for reaching out. We aim to respond within 24 hours.
     </p>
 
-    <Button
-      type="button"
-      variant="outline"
-      onClick={onReset}
-      className="mt-7 h-11 rounded-lg border-border px-8 text-[11.5px] font-semibold uppercase tracking-[0.16em] text-foreground transition-colors hover:border-primary hover:bg-primary/5 hover:text-primary"
-    >
-      Send Another Message
-    </Button>
+    <div data-anim="success-btn">
+      <Button
+        type="button"
+        variant="outline"
+        onClick={onReset}
+        className="mt-7 h-11 rounded-lg border-border px-8 text-[11.5px] font-semibold uppercase tracking-[0.16em] text-foreground transition-colors hover:border-primary hover:bg-primary/5 hover:text-primary"
+      >
+        Send Another Message
+      </Button>
+    </div>
   </div>
 );
 
