@@ -46,8 +46,8 @@ const Footer = () => {
   return (
     <footer className="mt-12 border-t border-border bg-card">
       {/* ============ TOP ============ */}
-      <div className="container mx-auto px-4 py-8 lg:px-6 lg:py-12">
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-6">
+      <div className="container mx-auto px-4 py-10 lg:px-6 lg:py-14">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-8">
           {/* Brand + Newsletter */}
           <div className="lg:col-span-4">
             <Link
@@ -60,47 +60,47 @@ const Footer = () => {
                 alt="ZUHR"
                 width={200}
                 height={100}
-                className="h-9 w-auto"
+                className="h-10 w-auto"
               />
             </Link>
 
-            <p className="mt-3 max-w-xs text-[12.5px] leading-relaxed text-muted-foreground">
+            <p className="mt-4 max-w-xs text-[13.5px] font-medium leading-relaxed text-foreground/70">
               Premium products at unbeatable prices. Fast delivery, easy
               returns, 24/7 support.
             </p>
 
             <form
               onSubmit={(e) => e.preventDefault()}
-              className="mt-4 flex w-full max-w-xs items-center overflow-hidden rounded-full border border-border bg-background"
+              className="mt-5 flex w-full max-w-xs items-center overflow-hidden rounded-full border border-border bg-background"
             >
               <input
                 type="email"
                 placeholder="Your email"
-                className="min-w-0 flex-1 bg-transparent px-3.5 py-2 text-[12.5px] text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
+                className="min-w-0 flex-1 bg-transparent px-4 py-2.5 text-[13px] font-medium text-foreground placeholder:text-muted-foreground focus:outline-none"
               />
               <button
                 type="submit"
                 aria-label="Subscribe"
                 className="m-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90"
               >
-                <Send size={13} strokeWidth={2.2} aria-hidden="true" />
+                <Send size={14} strokeWidth={2.2} aria-hidden="true" />
               </button>
             </form>
           </div>
 
           {/* Links — 3 columns on mobile too */}
-          <div className="grid grid-cols-3 gap-4 lg:col-span-5 lg:gap-6">
+          <div className="grid grid-cols-3 gap-6 lg:col-span-5 lg:gap-8">
             {Object.entries(FOOTER_LINKS).map(([key, section]) => (
               <div key={key}>
-                <h3 className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-foreground">
+                <h3 className="mb-3.5 text-[12px] font-bold uppercase tracking-wider text-foreground">
                   {section.title}
                 </h3>
-                <ul className="space-y-1.5">
+                <ul className="space-y-2.5">
                   {section.links.map((link) => (
                     <li key={link.href}>
                       <Link
                         href={link.href}
-                        className="text-[12px] text-muted-foreground transition-colors hover:text-primary"
+                        className="text-[13px] font-medium text-foreground/70 transition-colors hover:text-primary"
                       >
                         {link.label}
                       </Link>
@@ -113,22 +113,22 @@ const Footer = () => {
 
           {/* Contact + Socials */}
           <div className="lg:col-span-3">
-            <h3 className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-foreground">
+            <h3 className="mb-3.5 text-[12px] font-bold uppercase tracking-wider text-foreground">
               Get in Touch
             </h3>
-            <ul className="space-y-2 text-[12px] text-muted-foreground">
-              <li className="flex items-start gap-2">
+            <ul className="space-y-3 text-[13px] font-medium text-foreground/70">
+              <li className="flex items-start gap-2.5">
                 <MapPin
-                  size={13}
+                  size={15}
                   strokeWidth={2}
                   className="mt-0.5 shrink-0 text-primary"
                   aria-hidden="true"
                 />
                 <span>123 Gulshan Avenue, Dhaka 1212</span>
               </li>
-              <li className="flex items-center gap-2">
+              <li className="flex items-center gap-2.5">
                 <Phone
-                  size={13}
+                  size={15}
                   strokeWidth={2}
                   className="shrink-0 text-primary"
                   aria-hidden="true"
@@ -140,9 +140,9 @@ const Footer = () => {
                   +880 1700-000000
                 </a>
               </li>
-              <li className="flex items-center gap-2">
+              <li className="flex items-center gap-2.5">
                 <Mail
-                  size={13}
+                  size={15}
                   strokeWidth={2}
                   className="shrink-0 text-primary"
                   aria-hidden="true"
@@ -156,7 +156,7 @@ const Footer = () => {
               </li>
             </ul>
 
-            <div className="mt-4 flex items-center gap-2">
+            <div className="mt-5 flex items-center gap-2.5">
               {SOCIALS.map(({ icon: Icon, label, href }) => (
                 <a
                   key={label}
@@ -164,9 +164,9 @@ const Footer = () => {
                   aria-label={label}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-foreground/60 transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
                 >
-                  <Icon size={13} strokeWidth={2} aria-hidden="true" />
+                  <Icon size={15} strokeWidth={2} aria-hidden="true" />
                 </a>
               ))}
             </div>
@@ -175,13 +175,13 @@ const Footer = () => {
       </div>
 
       {/* ============ BOTTOM BAR ============ */}
-      <div className="border-t border-border">
-        <div className="container mx-auto flex flex-col items-center gap-2 px-4 py-3.5 text-[11.5px] text-muted-foreground sm:flex-row sm:justify-between lg:px-6">
+      <div className="border-t border-border/80">
+        <div className="container mx-auto flex flex-col items-center gap-2.5 px-4 py-4 text-[12px] font-medium text-foreground/60 sm:flex-row sm:justify-between lg:px-6">
           <p className="text-center sm:text-left">
             © {new Date().getFullYear()} ZUHR. All rights reserved.
           </p>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <Link
               href="/privacy"
               className="transition-colors hover:text-primary"
@@ -197,10 +197,6 @@ const Footer = () => {
             >
               Terms
             </Link>
-            <span aria-hidden="true" className="text-border">
-              •
-            </span>
-            
           </div>
         </div>
       </div>

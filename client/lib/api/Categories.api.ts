@@ -1,11 +1,11 @@
 // lib/api/categories.api.ts
 import { API } from "@/lib/axios";
 
-export type Category = { _id: string; name: string };
+export type Category = { _id: string; name: string; slug?: string };
 
 // TODO: change the route if your categories endpoint is different
-export const getCategoriesApi = (): Promise<Category[]> =>
-  API.get("/categories").then((res) => {
+export const getCategoriesApi = (signal?: AbortSignal): Promise<Category[]> =>
+  API.get("/categories", { signal }).then((res) => {
     const body = res.data?.data ?? res.data;
     if (Array.isArray(body)) return body;
     return body?.categories ?? body?.items ?? [];
