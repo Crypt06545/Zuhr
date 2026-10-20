@@ -6,7 +6,7 @@ import UtilityBar from "@/components/common/navbar/Utilitybar";
 import Navbar from "@/components/common/navbar/Navbar";
 
 import MobileBottomNav from "@/components/common/navbar/MobileBottomNav";
-import MobileDrawer from "@/components/common/MobileDrawer"; // ✅ নতুন ড্রয়ার
+import MobileDrawer from "@/components/common/MobileDrawer";
 import Footer from "@/components/common/footer/Footer";
 
 export default function MainLayout({

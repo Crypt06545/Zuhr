@@ -25,11 +25,22 @@ import {
   type ImageItem,
 } from "@/components/dashboard/ImageUpload";
 import { getErrorMessage } from "@/hooks/use-auth";
-import { AdminProductDetail, createProductApi, updateProductApi, updateVariantStockApi } from "@/lib/api/Products.api";
-import { BADGE_OPTIONS, buildProductPayload, FormValues, isEmptyHtml, MAX_IMAGES, tagsError, toFormValues } from "./products/Productpayload";
+import {
+  AdminProductDetail,
+  createProductApi,
+  updateProductApi,
+  updateVariantStockApi,
+} from "@/lib/api/Products.api";
+import {
+  BADGE_OPTIONS,
+  buildProductPayload,
+  FormValues,
+  isEmptyHtml,
+  MAX_IMAGES,
+  tagsError,
+  toFormValues,
+} from "./products/Productpayload";
 import { getCategoriesApi } from "@/lib/api/Categories.api";
-
-
 
 const EditorSkeleton = () => (
   <div className="h-[260px] animate-pulse rounded-md bg-muted/40" />
@@ -205,7 +216,7 @@ export const AddProductForm = ({ onDone, product }: AddProductFormProps) => {
     isError: categoriesError,
   } = useQuery({
     queryKey: ["admin-categories"],
-    queryFn: getCategoriesApi,
+    queryFn: ({ signal }) => getCategoriesApi(signal),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -404,30 +415,39 @@ export const AddProductForm = ({ onDone, product }: AddProductFormProps) => {
                 name="category"
                 control={control}
                 rules={{ required: "Category is required" }}
-                render={({ field }) => (
-                  <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
-                    disabled={categoriesLoading}
-                  >
-                    <SelectTrigger id="category" className="w-full">
-                      <SelectValue
-                        placeholder={
-                          categoriesLoading
-                            ? "Loading categories..."
-                            : "Select category"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat._id} value={cat._id}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                render={({ field }) => {
+                  const selected = categories.find(
+                    (cat) => cat._id === field.value,
+                  );
+
+                  return (
+                    <Select
+                      key={categories.length} // ক্যাটাগরি লোড হলে Select নতুন করে বসে
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      disabled={categoriesLoading}
+                    >
+                      <SelectTrigger id="category" className="w-full">
+                        <SelectValue
+                          placeholder={
+                            categoriesLoading
+                              ? "Loading categories..."
+                              : "Select category"
+                          }
+                        >
+                          {selected?.name}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat._id} value={cat._id}>
+                            {cat.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  );
+                }}
               />
             </Field>
 
