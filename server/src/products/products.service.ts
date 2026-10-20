@@ -30,6 +30,7 @@ import {
   MAX_PRODUCT_IMAGES,
   MAX_SLUG_LENGTH,
   PRODUCT_IMAGE_FOLDER,
+  ProductSort,
   PUBLIC_PROJECTION,
   SLUG_PATTERN,
 } from './products.constants.js';
@@ -205,10 +206,13 @@ export class ProductsService {
     try {
       const doc = await this.productModel.create({
         ...dto,
+        // FIX: category must be stored as an ObjectId, never as the string from the request
+        category: new Types.ObjectId(dto.category),
         slug,
         images,
         variants,
         lowStockThreshold: threshold,
+        minPrice: this.cheapestPrice(variants),
         ...computeStock(variants, threshold),
       });
 
@@ -323,6 +327,10 @@ export class ProductsService {
 
     const changes = this.compact({
       ...fields,
+      // FIX: category must be stored as an ObjectId, never as the string from the request
+      category: fields.category
+        ? new Types.ObjectId(fields.category)
+        : undefined,
       variants,
       images: [...remaining, ...uploaded],
     });
@@ -335,6 +343,11 @@ export class ProductsService {
           fields.lowStockThreshold ?? product.lowStockThreshold,
         ),
       );
+    }
+
+    // Cheapest variant price: price sorting reads this field
+    if (variants !== undefined) {
+      Object.assign(changes, { minPrice: this.cheapestPrice(variants) });
     }
 
     let updated: ProductLean | null;
@@ -661,6 +674,9 @@ export class ProductsService {
     projection?: string,
   ): Promise<ProductListResult> {
     const limit = query.limit ?? DEFAULT_PAGE_LIMIT;
+    const sort = query.sort ?? ProductSort.NEWEST;
+    const byPrice = sort !== ProductSort.NEWEST;
+    const priceDir = sort === ProductSort.PRICE_DESC ? -1 : 1;
     const filter: FilterQuery<ProductDocument> = { ...base };
 
     if (query.category) {
@@ -690,7 +706,37 @@ export class ProductsService {
     }
 
     if (query.cursor) {
-      filter._id = { $lt: new Types.ObjectId(query.cursor) };
+      if (!byPrice) {
+        if (!Types.ObjectId.isValid(query.cursor)) {
+          throw new BadRequestException('Invalid cursor');
+        }
+
+        filter._id = { $lt: new Types.ObjectId(query.cursor) };
+      } else {
+        // Price sort cursor: "<minPrice>_<id>"
+        const [rawPrice, rawId] = query.cursor.split('_');
+        const price = Number(rawPrice);
+
+        if (
+          !rawPrice ||
+          !Number.isFinite(price) ||
+          !rawId ||
+          !Types.ObjectId.isValid(rawId)
+        ) {
+          throw new BadRequestException('Invalid cursor');
+        }
+
+        const id = new Types.ObjectId(rawId);
+
+        filter.$and = [
+          {
+            $or: [
+              { minPrice: { [priceDir === 1 ? '$gt' : '$lt']: price } },
+              { minPrice: price, _id: { $lt: id } },
+            ],
+          },
+        ];
+      }
     }
 
     const find = this.productModel.find(filter);
@@ -701,7 +747,7 @@ export class ProductsService {
 
     // limit + 1: one extra document tells us there is another page (no count query)
     const docs = await find
-      .sort({ _id: -1 })
+      .sort(byPrice ? { minPrice: priceDir, _id: -1 } : { _id: -1 })
       .limit(limit + 1)
       .lean<ProductLean[]>()
       .exec();
@@ -712,9 +758,18 @@ export class ProductsService {
 
     return {
       items,
-      nextCursor: hasMore && last ? String(last._id) : null,
+      nextCursor:
+        hasMore && last
+          ? byPrice
+            ? `${last.minPrice}_${String(last._id)}`
+            : String(last._id)
+          : null,
       hasMore,
     };
+  }
+
+  private cheapestPrice(variants: Array<{ price: number }>): number {
+    return variants.length ? Math.min(...variants.map((v) => v.price)) : 0;
   }
 
   // product-এ ভুল বা মুছে ফেলা category ID বসতে পারবে না
@@ -1009,6 +1064,7 @@ export class ProductsService {
       min: query.minPrice,
       max: query.maxPrice,
       in: query.inStock ?? false,
+      so: query.sort ?? ProductSort.NEWEST,
     });
 
     return createHash('sha1').update(normalized).digest('hex');

@@ -8,6 +8,12 @@ export const MAX_PAGE_LIMIT = 50;
 
 export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 
+export enum ProductSort {
+  NEWEST = 'newest',
+  PRICE_ASC = 'price_asc',
+  PRICE_DESC = 'price_desc',
+}
+
 // Slugs are generated as a-z, 0-9 and '-' (max 80 + 7 chars). Anything else cannot exist,
 // so we reject it before it reaches Redis or MongoDB.
 export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

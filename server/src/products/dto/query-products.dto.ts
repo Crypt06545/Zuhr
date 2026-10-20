@@ -1,6 +1,5 @@
 // src/products/dto/query-products.dto.ts
-
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsEnum,
@@ -14,16 +13,18 @@ import {
   Min,
 } from 'class-validator';
 
-import { MAX_PAGE_LIMIT } from '../products.constants.js';
+import { MAX_PAGE_LIMIT, ProductSort } from '../products.constants.js';
 import { ProductStatus, StockStatus } from '../schemas/product.schema.js';
 
 export class QueryProductsDto {
-  // The previous page's nextCursor
+  // newest sort: "<id>", price sort: "<minPrice>_<id>"
   @IsOptional()
-  @IsMongoId()
+  @IsString()
+  @MaxLength(64)
   cursor?: string;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(MAX_PAGE_LIMIT)
@@ -34,29 +35,30 @@ export class QueryProductsDto {
   category?: string;
 
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MaxLength(100)
   search?: string;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   minPrice?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   maxPrice?: number;
 
-  // true hides out_of_stock products. Implicit conversion would turn "false" into true,
-  // so the raw value is checked instead
   @IsOptional()
-  @Transform(({ obj, key }: { obj: Record<string, unknown>; key: string }) => {
-    return obj[key] === 'true' || obj[key] === true;
-  })
+  @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   inStock?: boolean;
+
+  @IsOptional()
+  @IsEnum(ProductSort)
+  sort?: ProductSort;
 }
 
 export class AdminQueryProductsDto extends QueryProductsDto {
