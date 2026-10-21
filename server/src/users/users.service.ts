@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -244,6 +245,20 @@ export class UsersService {
 
   async getUserById(userId: string) {
     return this.userModel.findById(userId);
+  }
+
+  async updateProfile(userId: string, name: string) {
+    const user = await this.userModel
+      .findByIdAndUpdate(userId, { $set: { name } }, { new: true })
+      .select('name email')
+      .lean<{ name: string; email: string }>()
+      .exec();
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    return { name: user.name, email: user.email };
   }
 
   async getUserForTwoFactorSetup(userId: string) {
