@@ -7,6 +7,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { RegisterDto } from '../auth/dto/register.dto.js';
+import { CloudinaryService } from '../common/cloudinary/cloudinary.service.js';
 import {
   User,
   UserDocument,
@@ -24,12 +25,15 @@ export interface DeviceInfo {
   ipAddress: string | null;
 }
 
+const AVATAR_FOLDER = 'zuhr/avatars';
+
 @Injectable()
 export class UsersService {
   constructor(
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(RefreshToken.name)
     private refreshTokenModel: Model<RefreshToken>,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   // ─── User ───
@@ -65,6 +69,64 @@ export class UsersService {
       { _id: userId },
       { $set: { lastLoginAt: new Date() } },
     );
+  }
+
+  // ─── Profile ───
+
+  async updateProfile(userId: string, name: string) {
+    const user = await this.userModel
+      .findByIdAndUpdate(userId, { $set: { name } }, { new: true })
+      .select('name email')
+      .lean<{ name: string; email: string }>()
+      .exec();
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    return { name: user.name, email: user.email };
+  }
+
+  async updateAvatar(userId: string, file: Express.Multer.File) {
+    const current = await this.userModel
+      .findById(userId)
+      .select('+avatarPublicId')
+      .lean<{ avatarPublicId?: string }>()
+      .exec();
+
+    if (!current) {
+      throw new NotFoundException('User not found.');
+    }
+
+    const uploaded = await this.cloudinary.uploadImage(file, AVATAR_FOLDER);
+
+    try {
+      await this.userModel.updateOne(
+        { _id: userId },
+        {
+          $set: {
+            avatar: uploaded.url,
+            avatarPublicId: uploaded.publicId,
+          },
+        },
+      );
+    } catch (error) {
+      // DB ব্যর্থ: নতুন ছবি ফেলে দিই, যেন Cloudinary-তে এতিম ফাইল না থাকে
+      await this.cloudinary
+        .deleteImage(uploaded.publicId)
+        .catch(() => undefined);
+
+      throw error;
+    }
+
+    // সফল: পুরনো ছবি মুছি। মুছতে না পারলে ব্যবহারকারীর ফলাফল নষ্ট হয় না
+    if (current.avatarPublicId) {
+      await this.cloudinary
+        .deleteImage(current.avatarPublicId)
+        .catch(() => undefined);
+    }
+
+    return { avatarUrl: uploaded.url };
   }
 
   // ─── Refresh Token / Session Management ───
@@ -182,6 +244,7 @@ export class UsersService {
       },
     );
   }
+
   async getUserType(userId: string): Promise<UserType> {
     const user = await this.userModel
       .findById(userId)
@@ -245,20 +308,6 @@ export class UsersService {
 
   async getUserById(userId: string) {
     return this.userModel.findById(userId);
-  }
-
-  async updateProfile(userId: string, name: string) {
-    const user = await this.userModel
-      .findByIdAndUpdate(userId, { $set: { name } }, { new: true })
-      .select('name email')
-      .lean<{ name: string; email: string }>()
-      .exec();
-
-    if (!user) {
-      throw new NotFoundException('User not found.');
-    }
-
-    return { name: user.name, email: user.email };
   }
 
   async getUserForTwoFactorSetup(userId: string) {

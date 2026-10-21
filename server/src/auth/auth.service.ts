@@ -521,7 +521,6 @@ export class AuthService {
     };
   }
   // ─── Current user ───
-
   async getProfile(userId: string) {
     const user = await this.userService.getUserById(userId);
 
@@ -532,9 +531,17 @@ export class AuthService {
     // DB theke porchi (RolesGuard er moto), tai role bodlale sathe sathe effective
     const userType = await this.userService.getUserType(userId);
 
-    return { userId, email: user.email, userType };
+    return {
+      userId,
+      name: user.name,
+      email: user.email,
+      avatarUrl: user.avatar || null,
+      twoFactorEnabled: Boolean(user.twoFactorEnabled),
+      emailVerified: Boolean(user.emailVerifiedAt),
+      userType,
+    };
   }
-  
+
   async enableTwoFactor(userId: string, dto: Enable2faDto) {
     const user = await this.userService.getUserForTwoFactorSetup(userId);
 
