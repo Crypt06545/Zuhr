@@ -14,6 +14,8 @@ import {
   X,
 } from "lucide-react";
 import NavLinks from "./NavLinks";
+import AccountMenu from "./Accountmenu";
+
 
 type NavbarProps = {
   onMenuClick?: () => void;
@@ -120,20 +122,7 @@ const Navbar = ({ onMenuClick, cartCount = 0 }: NavbarProps) => {
             )}
           </button>
 
-          <Link
-            href="/account"
-            className="hidden items-center gap-2 text-muted-foreground transition-colors hover:text-primary lg:flex"
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-border">
-              <User size={16} strokeWidth={1.9} aria-hidden="true" />
-            </span>
-            <span className="hidden leading-tight xl:flex xl:flex-col">
-              <span className="text-[11px]">Account</span>
-              <span className="text-[13px] font-semibold text-foreground">
-                Sign In
-              </span>
-            </span>
-          </Link>
+          <AccountMenu />
 
           <Link
             href="/wishlist"

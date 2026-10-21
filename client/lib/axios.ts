@@ -2,6 +2,12 @@
 import axios from "axios";
 import { useAuthStore } from "@/store/auth-store";
 
+declare module "axios" {
+  interface AxiosRequestConfig {
+    skipLoginRedirect?: boolean;
+  }
+}
+
 export const API = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
   withCredentials: true, // refreshToken httpOnly cookie পাঠাতে/পেতে জরুরি
@@ -74,9 +80,12 @@ API.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return API(originalRequest);
       } catch {
-        // Refresh ও fail করলে session সত্যিই শেষ, logout করে দিচ্ছি
+        // Refresh ও fail করলে session সত্যিই শেষ
         useAuthStore.getState().clearAuth();
-        if (typeof window !== "undefined") {
+        if (
+          !originalRequest.skipLoginRedirect &&
+          typeof window !== "undefined"
+        ) {
           window.location.href = "/login";
         }
       }

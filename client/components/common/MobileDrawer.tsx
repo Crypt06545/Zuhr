@@ -4,8 +4,24 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { X, Search, ChevronDown, ChevronRight, User } from "lucide-react";
+import {
+  X,
+  Search,
+  ChevronDown,
+  ChevronRight,
+  User,
+  Package,
+  Star,
+  LayoutDashboard,
+  LogOut,
+  Loader2,
+  Settings,
+} from "lucide-react";
 import { NAV_LINKS, SIDEBAR_DATA, categoryHref } from "./navbar/NavData";
+
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useSignOut } from "@/hooks/Usesignout";
+import { ROUTES } from "./navbar/Accountmenu";
 
 type MobileDrawerProps = {
   isOpen: boolean;
@@ -14,11 +30,17 @@ type MobileDrawerProps = {
 
 type View = "categories" | "menu";
 
+const accountLinkClass =
+  "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[14px] font-semibold text-foreground/80 transition-colors hover:bg-muted hover:text-primary";
+
 const MobileDrawer = ({ isOpen, onClose }: MobileDrawerProps) => {
   const [navView, setNavView] = useState<View>("categories");
   const [expandedCat, setExpandedCat] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const router = useRouter();
+
+  const { data: user, isLoading: userLoading, isAdmin } = useCurrentUser();
+  const { signOut, isPending: signingOut } = useSignOut();
 
   const rootRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
@@ -272,16 +294,87 @@ const MobileDrawer = ({ isOpen, onClose }: MobileDrawerProps) => {
           )}
         </div>
 
-        {/* Footer (iPhone safe area soho) */}
-        <div className="space-y-4 border-t border-border bg-card p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-          <Link
-            href="/account"
-            onClick={onClose}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-[14px] font-bold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-          >
-            <User size={18} />
-            Sign In / Register
-          </Link>
+        {/* Footer (iPhone safe area soho). Chhoto screen e account link beshi hole nijei scroll hoy */}
+        <div className="max-h-[50%] space-y-4 overflow-y-auto border-t border-border bg-card p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          {userLoading ? (
+            <div
+              className="h-11 animate-pulse rounded-xl bg-muted"
+              aria-hidden="true"
+            />
+          ) : user ? (
+            <div>
+              <div className="mb-2 flex items-center gap-3 px-1">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground">
+                  <User size={18} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-[14px] font-semibold text-foreground">
+                    {user.name}
+                  </p>
+                  {user.email && (
+                    <p className="truncate text-xs text-muted-foreground">
+                      {user.email}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <nav aria-label="Account">
+                {isAdmin && (
+                  <Link
+                    href={ROUTES.profile}
+                    onClick={onClose}
+                    className={accountLinkClass}
+                  >
+                    <Settings size={17} aria-hidden="true" />
+                    Profile settings
+                  </Link>
+                )}
+                <Link
+                  href={ROUTES.orders}
+                  onClick={onClose}
+                  className={accountLinkClass}
+                >
+                  <Package size={17} aria-hidden="true" />
+                  Order history
+                </Link>
+                <Link
+                  href={ROUTES.reviews}
+                  onClick={onClose}
+                  className={accountLinkClass}
+                >
+                  <Star size={17} aria-hidden="true" />
+                  Reviews and ratings
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => signOut(onClose)}
+                  disabled={signingOut}
+                  className={`${accountLinkClass} w-full disabled:opacity-60`}
+                >
+                  {signingOut ? (
+                    <Loader2
+                      size={17}
+                      className="animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <LogOut size={17} aria-hidden="true" />
+                  )}
+                  Sign out
+                </button>
+              </nav>
+            </div>
+          ) : (
+            <Link
+              href={ROUTES.login}
+              onClick={onClose}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-[14px] font-bold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+            >
+              <User size={18} />
+              Sign In / Register
+            </Link>
+          )}
 
           <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-[12px] font-semibold text-muted-foreground">
             <Link
