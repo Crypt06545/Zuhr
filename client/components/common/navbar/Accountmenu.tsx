@@ -137,17 +137,29 @@ const AccountMenu = () => {
           </div>
 
           <div className="py-1.5">
+            {/* শুধু অ্যাডমিনের জন্য */}
             {isAdmin && (
               <Link
-                href={ROUTES.profile}
+                href={ROUTES.adminDashboard}
                 role="menuitem"
                 onClick={() => setOpen(false)}
                 className={itemClass}
               >
-                <Settings size={16} aria-hidden="true" />
-                Profile settings
+                <LayoutDashboard size={16} aria-hidden="true" />
+                Admin dashboard
               </Link>
             )}
+
+            {/* সবার জন্য: সাধারণ ইউজার ও অ্যাডমিন দুজনেই দেখবে */}
+            <Link
+              href={ROUTES.profile}
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className={itemClass}
+            >
+              <Settings size={16} aria-hidden="true" />
+              Profile settings
+            </Link>
             <Link
               href={ROUTES.orders}
               role="menuitem"

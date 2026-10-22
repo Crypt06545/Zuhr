@@ -9,12 +9,19 @@ import {
 } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Minus, Plus, ShoppingCart, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/api/Products.api";
+import { pickDefaultVariant } from "@/lib/cart-variant";
+import {
+  CHECKOUT_HREF,
+  MAX_QTY_PER_ITEM,
+  useCartStore,
+} from "@/store/cart-store";
 
 /* ============================================================
    TYPES (match the product returned by GET /products/:slug)
@@ -43,16 +50,8 @@ export interface ProductDetailData {
   tags: string[];
 }
 
-export interface CartLine {
-  productId: string;
-  variantId: string;
-  quantity: number;
-}
-
 interface ProductDetailsProps {
   product: ProductDetailData;
-  onAddToCart?: (line: CartLine) => void;
-  onBuyNow?: (line: CartLine) => void;
 }
 
 const unique = <T,>(values: T[]) => Array.from(new Set(values));
@@ -61,20 +60,27 @@ const unique = <T,>(values: T[]) => Array.from(new Set(values));
    VIEW
    ============================================================ */
 
-export const ProductDetails = ({
-  product,
-  onAddToCart,
-  onBuyNow,
-}: ProductDetailsProps) => {
+export const ProductDetails = ({ product }: ProductDetailsProps) => {
+  const router = useRouter();
   const { variants, images } = product;
 
   const [imageIndex, setImageIndex] = useState(0);
+  // প্রোডাক্ট কার্ডের মতো একই ডিফল্ট variant, তাই দুই জায়গা থেকে যোগ করলে একই লাইনে মেলে
   const [variantId, setVariantId] = useState(
-    () => (variants.find((v) => v.stock > 0) ?? variants[0])?._id,
+    () => pickDefaultVariant(variants)?._id,
   );
   const [quantity, setQuantity] = useState(1);
 
   const variant = variants.find((v) => v._id === variantId) ?? variants[0];
+
+  // এই variant cart-এ এখন কতটা আছে (cart card ও এই পেজ একই store ব্যবহার করে)
+  const inCart = useCartStore(
+    (state) =>
+      state.items.find(
+        (item) =>
+          item.productId === product._id && item.variantId === variant?._id,
+      )?.quantity ?? 0,
+  );
 
   const sizes = unique(variants.map((v) => v.size));
   const colors = unique(
@@ -123,32 +129,57 @@ export const ProductDetails = ({
       ? `Only ${variant.stock} left`
       : "In stock";
 
+  // আর কতটা cart-এ যোগ করা যায়: স্টক ও প্রতি আইটেমের সীমার মধ্যে, cart-এ যা আছে তা বাদ দিয়ে
+  const limit = Math.min(variant.stock, MAX_QTY_PER_ITEM);
+  const remaining = Math.max(0, limit - inCart);
+  const canAdd = !outOfStock && remaining > 0;
+  const qty = Math.min(quantity, Math.max(1, remaining));
+
   const discount =
     variant.compareAtPrice && variant.compareAtPrice > variant.price
       ? Math.round((1 - variant.price / variant.compareAtPrice) * 100)
       : 0;
 
   const image = images[imageIndex] ?? images[0];
-  const total = variant.price * quantity;
+  const total = variant.price * qty;
+  const option = [variant.size, variant.color].filter(Boolean).join(" / ");
 
-  const line: CartLine = {
-    productId: product._id,
-    variantId: variant._id,
-    quantity,
-  };
-
-  const summary = `${product.name} · ${[variant.size, variant.color]
-    .filter(Boolean)
-    .join(" / ")} × ${quantity}`;
+  // দুই বাটনই এই একই কাজ করে: নির্বাচিত variant ও পরিমাণ cart store-এ যোগ
+  // (product card-এর "Add to Cart"-এর মতোই; আসল দাম ও স্টক checkout-এ সার্ভার যাচাই করে)
+  const addSelectedToCart = () =>
+    useCartStore.getState().addItem(
+      {
+        productId: product._id,
+        variantId: variant._id,
+        name: product.name,
+        slug: product.slug,
+        image: images[0]?.url,
+        size: variant.size,
+        color: variant.color,
+        unitPrice: variant.price,
+        compareAtPrice: variant.compareAtPrice,
+      },
+      qty,
+    );
 
   const handleAddToCart = () => {
-    onAddToCart?.(line);
-    toast.success("Added to cart", { description: summary });
+    if (!canAdd) return;
+
+    const { quantity: nowInCart } = addSelectedToCart();
+
+    setQuantity(1);
+    // একই id: বারবার চাপলে বার্তা জমে না, আগেরটাই নতুন সংখ্যায় বদলায়
+    toast.success("Added to cart", {
+      id: "cart-feedback",
+      description: `${product.name} · ${option} (${nowInCart} in cart)`,
+    });
   };
 
   const handleBuyNow = () => {
-    onBuyNow?.(line);
-    toast.success("Proceeding to checkout", { description: summary });
+    if (!canAdd) return;
+
+    addSelectedToCart();
+    router.push(CHECKOUT_HREF);
   };
 
   const optionClass = (active: boolean, soldOut: boolean) =>
@@ -351,8 +382,8 @@ export const ProductDetails = ({
               <div className="inline-flex h-12 items-center rounded-lg border border-border">
                 <button
                   type="button"
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  disabled={outOfStock || quantity <= 1}
+                  onClick={() => setQuantity(Math.max(1, qty - 1))}
+                  disabled={!canAdd || qty <= 1}
                   aria-label="Decrease quantity"
                   className="flex h-full w-12 items-center justify-center text-foreground/70 transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -362,14 +393,12 @@ export const ProductDetails = ({
                   className="w-10 text-center text-[15px] font-semibold text-foreground"
                   aria-live="polite"
                 >
-                  {quantity}
+                  {qty}
                 </span>
                 <button
                   type="button"
-                  onClick={() =>
-                    setQuantity((q) => Math.min(variant.stock, q + 1))
-                  }
-                  disabled={outOfStock || quantity >= variant.stock}
+                  onClick={() => setQuantity(Math.min(remaining, qty + 1))}
+                  disabled={!canAdd || qty >= remaining}
                   aria-label="Increase quantity"
                   className="flex h-full w-12 items-center justify-center text-foreground/70 transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -378,7 +407,7 @@ export const ProductDetails = ({
               </div>
             </div>
 
-            {quantity > 1 && (
+            {qty > 1 && (
               <div className="pb-1 text-right">
                 <p className="text-[12px] font-semibold text-muted-foreground">
                   Total
@@ -390,12 +419,12 @@ export const ProductDetails = ({
             )}
           </div>
 
-          {/* Actions */}
+          {/* Actions: দুটোই একই cart store ব্যবহার করে */}
           <div className="grid grid-cols-2 gap-3">
             <Button
               type="button"
               variant="outline"
-              disabled={outOfStock}
+              disabled={!canAdd}
               onClick={handleAddToCart}
               className="h-12 w-full min-w-0 gap-2 whitespace-nowrap px-3 text-sm font-semibold"
             >
@@ -404,7 +433,7 @@ export const ProductDetails = ({
             </Button>
             <Button
               type="button"
-              disabled={outOfStock}
+              disabled={!canAdd}
               onClick={handleBuyNow}
               className="h-12 w-full min-w-0 gap-2 whitespace-nowrap px-3 text-sm font-semibold"
             >
@@ -412,6 +441,15 @@ export const ProductDetails = ({
               Buy now
             </Button>
           </div>
+
+          {/* cart-এ কতটা আছে, আর সীমায় পৌঁছালে কারণ */}
+          {!outOfStock && inCart > 0 && (
+            <p className="mt-3 text-[13px] text-muted-foreground">
+              {remaining === 0
+                ? `You already have the maximum available (${inCart}) in your cart.`
+                : `${inCart} of this item already in your cart.`}
+            </p>
+          )}
 
           {/* Product details table (transparent: shows the page background) */}
           <section className="mt-6 overflow-hidden rounded-2xl border border-border">

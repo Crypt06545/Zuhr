@@ -14,6 +14,8 @@ import {
   isOutOfStock,
   type Product,
 } from "@/lib/api/Products.api";
+import { pickDefaultVariant } from "@/lib/cart-variant";
+import { MAX_QTY_PER_ITEM, useCartStore } from "@/store/cart-store";
 
 type Rating = { average: number; count: number };
 
@@ -40,17 +42,15 @@ export const ProductCard = ({ product, eager = false }: ProductCardProps) => {
 
   const rating = product.rating ?? PLACEHOLDER_RATING;
 
-  const cheapest = variants.length
-    ? variants.reduce((a, b) => (b.price < a.price ? b : a))
-    : undefined;
-  const maxPrice = variants.length
-    ? Math.max(...variants.map((v) => v.price))
-    : 0;
-  const hasRange = !!cheapest && cheapest.price !== maxPrice;
+  // cart-এ যে variant যায় (প্রোডাক্ট পেজের ডিফল্টের সঙ্গে একই নিয়ম), দাম ও ছাড়ও এটারই দেখাই
+  const defaultVariant = pickDefaultVariant(variants);
 
   const discount =
-    cheapest?.compareAtPrice && cheapest.compareAtPrice > cheapest.price
-      ? Math.round((1 - cheapest.price / cheapest.compareAtPrice) * 100)
+    defaultVariant?.compareAtPrice &&
+    defaultVariant.compareAtPrice > defaultVariant.price
+      ? Math.round(
+          (1 - defaultVariant.price / defaultVariant.compareAtPrice) * 100,
+        )
       : 0;
 
   const outOfStock = isOutOfStock(product.stockStatus);
@@ -59,13 +59,38 @@ export const ProductCard = ({ product, eager = false }: ProductCardProps) => {
   const hoverImage = images[1]?.url;
   const href = `/products/${product.slug}`;
 
+  // cart-এ যায় productId + variantId + পরিমাণ (দেখানোর জন্য নাম-ছবি-দামও)।
+  // আসল দাম ও স্টক checkout-এ সার্ভার যাচাই করে।
+  // drawer নিজে থেকে খোলে না: শুধু একটা ছোট বার্তা আসে। cart দেখতে Navbar-এর আইকনে চাপতে হয়।
   const handleAddToCart = () => {
-    if (!cheapest) return;
+    if (!defaultVariant) return;
 
-    const option = [cheapest.size, cheapest.color].filter(Boolean).join(" / ");
+    const { status, quantity } = useCartStore.getState().addItem({
+      productId: product._id,
+      variantId: defaultVariant._id,
+      name: product.name,
+      slug: product.slug,
+      image,
+      size: defaultVariant.size,
+      color: defaultVariant.color,
+      unitPrice: defaultVariant.price,
+      compareAtPrice: defaultVariant.compareAtPrice,
+    });
 
+    const option = [defaultVariant.size, defaultVariant.color]
+      .filter(Boolean)
+      .join(" / ");
+    if (status === "limit") {
+      toast.info(`You can add up to ${MAX_QTY_PER_ITEM} of one item.`, {
+        id: "cart-feedback",
+      });
+      return;
+    }
+
+    // একই id: বারবার চাপলে বার্তা জমে না, আগেরটাই নতুন সংখ্যায় বদলায়
     toast.success("Added to cart", {
-      description: `${product.name} · ${option} × 1`,
+      id: "cart-feedback",
+      description: `${product.name}${option ? ` · ${option}` : ""} (${quantity} in cart)`,
     });
   };
 
@@ -211,20 +236,15 @@ export const ProductCard = ({ product, eager = false }: ProductCardProps) => {
         </div>
 
         {/* Price */}
-        {cheapest && (
+        {defaultVariant && (
           <div className="mt-2.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="text-[18px] font-bold leading-none text-foreground">
-              {hasRange && (
-                <span className="mr-1 text-[11px] font-medium text-muted-foreground">
-                  From
-                </span>
-              )}
-              {formatPrice(cheapest.price)}
+              {formatPrice(defaultVariant.price)}
             </span>
 
-            {discount > 0 && cheapest.compareAtPrice && (
+            {discount > 0 && defaultVariant.compareAtPrice && (
               <span className="text-[13px] text-muted-foreground line-through">
-                {formatPrice(cheapest.compareAtPrice)}
+                {formatPrice(defaultVariant.compareAtPrice)}
               </span>
             )}
           </div>
@@ -244,7 +264,7 @@ export const ProductCard = ({ product, eager = false }: ProductCardProps) => {
             <Button
               type="button"
               onClick={handleAddToCart}
-              disabled={!cheapest}
+              disabled={!defaultVariant}
               className="h-11 w-full gap-2 rounded-xl text-[13px] font-bold"
             >
               <ShoppingCart className="h-4 w-4 shrink-0" aria-hidden="true" />

@@ -16,7 +16,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { getErrorMessage } from "@/hooks/use-auth";
 
-
 import type { Product } from "@/lib/mock-products";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { PaginationBar } from "@/components/common/Paginationbar";
@@ -27,7 +26,12 @@ import {
   useCursorPagination,
   useDebouncedValue,
 } from "@/hooks/Usecursorpagination";
-import { AdminProduct, AdminProductsFilters, deleteProductApi, getAdminProductsApi } from "@/lib/api/Products.api";
+import {
+  AdminProduct,
+  AdminProductsFilters,
+  deleteProductApi,
+  getAdminProductsApi,
+} from "@/lib/api/Products.api";
 import { getCategoriesApi } from "@/lib/api/Categories.api";
 
 type Filter = "all" | StockState;
@@ -79,7 +83,7 @@ export const ProductsManager = () => {
 
   const { data: categories = [] } = useQuery({
     queryKey: ["admin-categories"],
-    queryFn: getCategoriesApi,
+    queryFn: ({ signal }) => getCategoriesApi(signal),
     staleTime: 5 * 60 * 1000,
   });
 

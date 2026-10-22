@@ -333,7 +333,7 @@ const ContactPage = () => {
           </div>
 
           {/* FAQ */}
-          <div className="pt-2">
+          {/* <div className="pt-2">
             <h4
               data-anim="faq-heading"
               className="mb-5 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground"
@@ -352,7 +352,7 @@ const ContactPage = () => {
                 </div>
               ))}
             </div>
-          </div>
+          </div> */}
         </div>
 
         {/* ============ RIGHT: FORM / SUCCESS ============ */}

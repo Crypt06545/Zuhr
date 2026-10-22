@@ -349,7 +349,7 @@ const AboutPage = () => {
       </div>
 
       {/* ============ BEYOND ATTRARS ============ */}
-      <section data-anim="beyond" className="mb-16 md:mb-20">
+      {/* <section data-anim="beyond" className="mb-16 md:mb-20">
         <div className="grid gap-6 md:grid-cols-[200px_1fr] md:gap-12">
           <span className="pt-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             Beyond Fragrance
@@ -364,7 +364,7 @@ const AboutPage = () => {
             </p>
           </div>
         </div>
-      </section>
+      </section> */}
 
       {/* ============ CTA BANNER ============ */}
       <section
