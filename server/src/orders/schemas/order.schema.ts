@@ -104,7 +104,8 @@ export class ShippingAddress {
 export const ShippingAddressSchema =
   SchemaFactory.createForClass(ShippingAddress);
 
-// Short history of what happened to the order (created, status changes, edits)
+// Short history of what happened to the order (created, status changes, edits).
+// `by` points to the user who did it, so the admin screen can show the name.
 @Schema({ _id: false })
 export class TimelineEntry {
   @Prop({ required: true })
@@ -113,7 +114,7 @@ export class TimelineEntry {
   @Prop({ required: true })
   at!: Date;
 
-  @Prop({ type: Types.ObjectId })
+  @Prop({ type: Types.ObjectId, ref: 'User' })
   by?: Types.ObjectId;
 
   @Prop({ type: String })

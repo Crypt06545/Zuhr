@@ -2,13 +2,39 @@
 
 import { OrderStatus, PaymentStatus } from './schemas/order.schema.js';
 
-// Which status an order may move to from its current one
+// Admin can move an order to any other status. Side effects (stock, payment,
+// deliveredAt) are handled in OrdersService.updateStatus.
 export const STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  [OrderStatus.PENDING]: [OrderStatus.PROCESSING, OrderStatus.CANCELLED],
-  [OrderStatus.PROCESSING]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
-  [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED],
-  [OrderStatus.DELIVERED]: [],
-  [OrderStatus.CANCELLED]: [],
+  [OrderStatus.PENDING]: [
+    OrderStatus.PROCESSING,
+    OrderStatus.SHIPPED,
+    OrderStatus.DELIVERED,
+    OrderStatus.CANCELLED,
+  ],
+  [OrderStatus.PROCESSING]: [
+    OrderStatus.PENDING,
+    OrderStatus.SHIPPED,
+    OrderStatus.DELIVERED,
+    OrderStatus.CANCELLED,
+  ],
+  [OrderStatus.SHIPPED]: [
+    OrderStatus.PENDING,
+    OrderStatus.PROCESSING,
+    OrderStatus.DELIVERED,
+    OrderStatus.CANCELLED,
+  ],
+  [OrderStatus.DELIVERED]: [
+    OrderStatus.PENDING,
+    OrderStatus.PROCESSING,
+    OrderStatus.SHIPPED,
+    OrderStatus.CANCELLED,
+  ],
+  [OrderStatus.CANCELLED]: [
+    OrderStatus.PENDING,
+    OrderStatus.PROCESSING,
+    OrderStatus.SHIPPED,
+    OrderStatus.DELIVERED,
+  ],
 };
 
 // The statuses an order can be in right before it moves to `target`
@@ -20,7 +46,13 @@ export const statusesThatCanMoveTo = (target: OrderStatus): OrderStatus[] =>
 // Items, address and fees can change only before the parcel is shipped
 export const EDITABLE_STATUSES = [OrderStatus.PENDING, OrderStatus.PROCESSING];
 
-export const ADMIN_CANCELLABLE = [OrderStatus.PENDING, OrderStatus.PROCESSING];
+// Admin can cancel from any status except cancelled itself
+export const ADMIN_CANCELLABLE = [
+  OrderStatus.PENDING,
+  OrderStatus.PROCESSING,
+  OrderStatus.SHIPPED,
+  OrderStatus.DELIVERED,
+];
 
 // A customer can cancel only while nobody has started working on the order
 export const CUSTOMER_CANCELLABLE = [OrderStatus.PENDING];

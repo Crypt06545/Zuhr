@@ -121,6 +121,17 @@ const isVoidPayment = (
 ): value is PaymentStatus.FAILED | PaymentStatus.REFUNDED =>
   value === PaymentStatus.FAILED || value === PaymentStatus.REFUNDED;
 
+// Written on the timeline when COD money is collected at delivery, so a
+// "delivered -> shipped" correction can put the payment back as it was
+const COD_COLLECTED_NOTE = 'Collected on delivery';
+
+const receivedBeforeDelivery = (note?: string): number => {
+  const match = note?.match(/received before: ([\d.]+)/);
+  const value = match ? Number(match[1]) : 0;
+
+  return Number.isFinite(value) ? value : 0;
+};
+
 const escapeRegex = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -329,7 +340,13 @@ export class OrdersService {
   }
 
   async findOneAdmin(id: string): Promise<OrderLean> {
-    const order = await this.orderModel.findById(id).lean<OrderLean>().exec();
+    // Only the name of whoever did each timeline step is loaded, nothing else
+    // from the user (no email, no password hash)
+    const order = await this.orderModel
+      .findById(id)
+      .populate({ path: 'timeline.by', model: 'User', select: 'name' })
+      .lean<OrderLean>()
+      .exec();
 
     if (!order) throw new NotFoundException('Order not found');
 
@@ -388,7 +405,21 @@ export class OrdersService {
       throw new BadRequestException(`Orders cannot be moved to ${dto.status}`);
     }
 
+    // Leaving cancelled: the stock was given back, so take it again
+    const current = await this.orderModel
+      .findById(id)
+      .select('status')
+      .lean<Pick<OrderLean, 'status'>>()
+      .exec();
+
+    if (!current) throw new NotFoundException('Order not found');
+
+    if (current.status === OrderStatus.CANCELLED) {
+      return this.reopenOrder(id, dto, actorId);
+    }
+
     const now = new Date();
+    const by = new Types.ObjectId(actorId);
 
     const filter: FilterQuery<OrderDocument> = {
       _id: id,
@@ -405,6 +436,7 @@ export class OrdersService {
 
     // One atomic step: the status changes only if the order is still in a
     // status it may move from. Two admins clicking at once cannot both win.
+    // Any status other than delivered clears deliveredAt.
     let updated = await this.orderModel
       .findOneAndUpdate(
         filter,
@@ -415,11 +447,14 @@ export class OrdersService {
               ? { deliveredAt: now }
               : {}),
           },
+          ...(dto.status !== OrderStatus.DELIVERED
+            ? { $unset: { deliveredAt: '' } }
+            : {}),
           $push: {
             timeline: {
               event: `status:${dto.status}`,
               at: now,
-              by: new Types.ObjectId(actorId),
+              by,
               note: dto.note,
             },
           },
@@ -430,27 +465,25 @@ export class OrdersService {
       .exec();
 
     if (!updated) {
-      const current = await this.orderModel
+      const latest = await this.orderModel
         .findById(id)
         .select('status paymentMethod paymentStatus')
         .lean<Pick<OrderLean, 'status' | 'paymentMethod' | 'paymentStatus'>>()
         .exec();
 
-      if (!current) throw new NotFoundException('Order not found');
+      if (!latest) throw new NotFoundException('Order not found');
 
-      if (!allowedFrom.includes(current.status)) {
-        throw new ConflictException(
-          `A ${current.status} order cannot be moved to ${dto.status}`,
-        );
+      if (latest.status === dto.status) {
+        throw new ConflictException(`The order is already ${dto.status}`);
       }
 
       if (
         dto.status === OrderStatus.PROCESSING &&
-        current.paymentMethod !== PaymentMethod.COD &&
-        current.paymentStatus !== PaymentStatus.PAID
+        latest.paymentMethod !== PaymentMethod.COD &&
+        latest.paymentStatus !== PaymentStatus.PAID
       ) {
         throw new ConflictException(
-          `Mark the ${current.paymentMethod} payment as Paid before processing (now: ${current.paymentStatus})`,
+          `Mark the ${latest.paymentMethod} payment as Paid before processing (now: ${latest.paymentStatus})`,
         );
       }
 
@@ -459,15 +492,35 @@ export class OrdersService {
       );
     }
 
-    // Cash on delivery: the rest of the money (all of it, or what is left after
-    // an advance) is collected at the door, so the order is fully paid now
+    updated = await this.applyCodPaymentRules(id, updated, dto.status, now, by);
+
+    await this.bumpSummary();
+
+    return updated;
+  }
+
+  /**
+   * COD money is collected at the door, so Delivered marks it paid. If the
+   * order leaves Delivered, and that was the only reason it was paid, the
+   * payment goes back to what it was before.
+   */
+  private async applyCodPaymentRules(
+    id: string,
+    order: OrderLean,
+    target: OrderStatus,
+    now: Date,
+    by: Types.ObjectId,
+  ): Promise<OrderLean> {
+    if (order.paymentMethod !== PaymentMethod.COD) return order;
+
     if (
-      dto.status === OrderStatus.DELIVERED &&
-      updated.paymentMethod === PaymentMethod.COD &&
-      (updated.paymentStatus === PaymentStatus.PENDING ||
-        updated.paymentStatus === PaymentStatus.PARTIAL)
+      target === OrderStatus.DELIVERED &&
+      (order.paymentStatus === PaymentStatus.PENDING ||
+        order.paymentStatus === PaymentStatus.PARTIAL)
     ) {
-      updated =
+      const before = receivedAmount(order);
+
+      return (
         (await this.orderModel
           .findOneAndUpdate(
             {
@@ -479,26 +532,155 @@ export class OrdersService {
             {
               $set: {
                 paymentStatus: PaymentStatus.PAID,
-                paidAmount: updated.total,
+                paidAmount: order.total,
               },
               $push: {
                 timeline: {
                   event: 'payment:paid',
                   at: now,
-                  by: new Types.ObjectId(actorId),
-                  note: 'Collected on delivery',
+                  by,
+                  note: `${COD_COLLECTED_NOTE}; received before: ${before}`,
                 },
               },
             },
             { returnDocument: 'after' },
           )
           .lean<OrderLean>()
-          .exec()) ?? updated;
+          .exec()) ?? order
+      );
     }
+
+    if (
+      target !== OrderStatus.DELIVERED &&
+      order.paymentStatus === PaymentStatus.PAID
+    ) {
+      // Only undo a payment that the delivery step itself collected
+      const lastPaid = [...order.timeline]
+        .reverse()
+        .find((entry) => entry.event === 'payment:paid');
+
+      if (lastPaid?.note?.startsWith(COD_COLLECTED_NOTE)) {
+        const restored = receivedBeforeDelivery(lastPaid.note);
+        const status = derivePaymentStatus(restored, order.total);
+
+        return (
+          (await this.orderModel
+            .findOneAndUpdate(
+              { _id: id, paymentStatus: PaymentStatus.PAID },
+              {
+                $set: { paymentStatus: status, paidAmount: restored },
+                $push: {
+                  timeline: {
+                    event: `payment:${status}`,
+                    at: now,
+                    by,
+                    note: 'Moved back from Delivered, payment restored',
+                  },
+                },
+              },
+              { returnDocument: 'after' },
+            )
+            .lean<OrderLean>()
+            .exec()) ?? order
+        );
+      }
+    }
+
+    return order;
+  }
+
+  /**
+   * Cancelled -> any other status. The stock was given back at cancel time, so
+   * it is taken again, in the same transaction as the status change. If there
+   * is not enough stock, nothing changes and the admin sees why.
+   */
+  private async reopenOrder(
+    id: string,
+    dto: UpdateOrderStatusDto,
+    actorId: string,
+  ): Promise<OrderLean> {
+    let stockResults: StockChangeResult[] = [];
+    const by = new Types.ObjectId(actorId);
+
+    const reopened = await this.connection.transaction(async (session) => {
+      stockResults = [];
+      const now = new Date();
+
+      const order = await this.orderModel
+        .findOneAndUpdate(
+          { _id: id, status: OrderStatus.CANCELLED },
+          {
+            $set: {
+              status: dto.status,
+              ...(dto.status === OrderStatus.DELIVERED
+                ? { deliveredAt: now }
+                : {}),
+            },
+            $unset: {
+              cancelledAt: '',
+              ...(dto.status !== OrderStatus.DELIVERED
+                ? { deliveredAt: '' }
+                : {}),
+            },
+            $push: {
+              timeline: {
+                event: `status:${dto.status}`,
+                at: now,
+                by,
+                note: dto.note ?? 'Reopened from Cancelled',
+              },
+            },
+          },
+          { returnDocument: 'after', session },
+        )
+        .lean<OrderLean>()
+        .exec();
+
+      if (!order) {
+        throw new ConflictException(
+          'The order was changed by someone else. Reload and try again',
+        );
+      }
+
+      if (
+        dto.status === OrderStatus.PROCESSING &&
+        order.paymentMethod !== PaymentMethod.COD &&
+        order.paymentStatus !== PaymentStatus.PAID
+      ) {
+        throw new ConflictException(
+          `Mark the ${order.paymentMethod} payment as Paid before processing (now: ${order.paymentStatus})`,
+        );
+      }
+
+      // Same fixed order as checkout, so two orders never lock in opposite orders.
+      // applyStockChange refuses when stock is short, which rolls everything back.
+      for (const item of this.sortedItems(order.items)) {
+        stockResults.push(
+          await this.products.applyStockChange(
+            String(item.product),
+            String(item.variant),
+            { type: StockUpdateType.ADJUST, quantity: -item.quantity },
+            session,
+          ),
+        );
+      }
+
+      return order;
+    });
+
+    await this.products.afterStockChanged(stockResults);
+
+    const final = await this.applyCodPaymentRules(
+      id,
+      reopened,
+      dto.status,
+      new Date(),
+      by,
+    );
 
     await this.bumpSummary();
 
-    return updated;
+    return final;
   }
 
   // ───────────────────────── Admin: edit ─────────────────────────
@@ -508,6 +690,10 @@ export class OrdersService {
    * Changing a quantity moves only the difference in stock, inside one
    * transaction with the order change. Two edits of the same order at once
    * cannot overwrite each other: Mongo detects the conflict and this runs again.
+   *
+   * Items, address and delivery charge can change only while the order is
+   * pending or processing. Payment and the internal note stay editable in
+   * every status (late payments, refunds after a cancel).
    */
   async update(id: string, dto: UpdateOrderDto, actorId: string) {
     let stockResults: StockChangeResult[] = [];
@@ -523,8 +709,15 @@ export class OrdersService {
 
       if (!order) throw new NotFoundException('Order not found');
 
-      if (!EDITABLE_STATUSES.includes(order.status)) {
-        throw new ConflictException(`A ${order.status} order cannot be edited`);
+      const changesOrderContent =
+        dto.items !== undefined ||
+        dto.shippingAddress !== undefined ||
+        dto.shippingFee !== undefined;
+
+      if (changesOrderContent && !EDITABLE_STATUSES.includes(order.status)) {
+        throw new ConflictException(
+          `Items, address and delivery charge cannot be changed on a ${order.status} order`,
+        );
       }
 
       if (
@@ -593,7 +786,7 @@ export class OrdersService {
             $set: set,
             $push: { timeline: { $each: timeline } },
           },
-          { new: true, session },
+          { returnDocument: 'after', session },
         )
         .lean<OrderLean>()
         .exec();
@@ -740,7 +933,7 @@ export class OrdersService {
               },
             },
           },
-          { new: true, session },
+          { returnDocument: 'after', session },
         )
         .lean<OrderLean>()
         .exec();
