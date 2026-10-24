@@ -40,6 +40,7 @@ import {
   derivePaymentStatus,
   describeEvent,
   formatDateTime,
+  isOrderLocked,
   isVoidPayment,
   MAX_LINE_QUANTITY,
   orderDetailKey,
@@ -49,6 +50,7 @@ import {
   PAYMENT_STATUS_LABELS,
   PAYMENT_STATUSES,
   receivedAmount,
+  timelineActor,
   toCents,
 } from "@/lib/admin-orders";
 
@@ -151,6 +153,9 @@ const OrderForm = ({
 }) => {
   const queryClient = useQueryClient();
 
+  // shipped / delivered / cancelled: আইটেম, ঠিকানা আর ডেলিভারি চার্জ বন্ধ; পেমেন্ট আর নোট খোলা
+  const locked = isOrderLocked(order.status);
+
   const {
     register,
     control,
@@ -217,7 +222,7 @@ const OrderForm = ({
           Number(line.quantity),
       );
 
-    if (itemsChanged) {
+    if (!locked && itemsChanged) {
       body.items = values.items.map((line) => ({
         productId: line.productId,
         variantId: line.variantId,
@@ -244,7 +249,7 @@ const OrderForm = ({
       address.district !== (before.district ?? "") ||
       address.postalCode !== (before.postalCode ?? "");
 
-    if (addressChanged) {
+    if (!locked && addressChanged) {
       body.shippingAddress = {
         fullName: address.fullName,
         phone: address.phone,
@@ -256,7 +261,7 @@ const OrderForm = ({
       changed = true;
     }
 
-    if (Number(values.shippingFee) !== order.shippingFee) {
+    if (!locked && Number(values.shippingFee) !== order.shippingFee) {
       body.shippingFee = Number(values.shippingFee);
       changed = true;
     }
@@ -327,7 +332,7 @@ const OrderForm = ({
         </section>
 
         {/* আইটেম */}
-        <section className="space-y-3">
+        <fieldset disabled={locked} className="min-w-0 space-y-3">
           <SectionTitle>Items</SectionTitle>
           <ul className="divide-y divide-border rounded-lg border border-border">
             {fields.map((field, index) => (
@@ -368,7 +373,7 @@ const OrderForm = ({
                 <button
                   type="button"
                   onClick={() => remove(index)}
-                  disabled={fields.length <= 1}
+                  disabled={locked || fields.length <= 1}
                   aria-label={`Remove ${field.name}`}
                   title={
                     fields.length <= 1
@@ -383,12 +388,14 @@ const OrderForm = ({
             ))}
           </ul>
           <p className="text-xs text-muted-foreground">
-            Changing a quantity or removing an item adjusts the stock for you.
+            {locked
+              ? `Items, address and delivery charge are locked on a ${order.status} order. Payment and the note can still be updated.`
+              : "Changing a quantity or removing an item adjusts the stock for you."}
           </p>
-        </section>
+        </fieldset>
 
         {/* ঠিকানা */}
-        <section className="space-y-4">
+        <fieldset disabled={locked} className="min-w-0 space-y-4">
           <SectionTitle>Delivery address</SectionTitle>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
@@ -443,32 +450,34 @@ const OrderForm = ({
               <Input id="o-postal" {...register("postalCode")} />
             </Field>
           </div>
-        </section>
+        </fieldset>
 
         {/* টাকা ও পেমেন্ট */}
         <section className="space-y-4">
           <SectionTitle>Charges and payment</SectionTitle>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field
-              id="o-fee"
-              label="Delivery charge (BDT)"
-              error={errors.shippingFee?.message}
-            >
-              <Input
+            <fieldset disabled={locked} className="min-w-0">
+              <Field
                 id="o-fee"
-                type="number"
-                inputMode="decimal"
-                min={0}
-                aria-invalid={!!errors.shippingFee}
-                {...register("shippingFee", {
-                  validate: (value) =>
-                    (value.trim() !== "" &&
-                      Number.isFinite(Number(value)) &&
-                      Number(value) >= 0) ||
-                    "Enter a valid amount",
-                })}
-              />
-            </Field>
+                label="Delivery charge (BDT)"
+                error={errors.shippingFee?.message}
+              >
+                <Input
+                  id="o-fee"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  aria-invalid={!!errors.shippingFee}
+                  {...register("shippingFee", {
+                    validate: (value) =>
+                      (value.trim() !== "" &&
+                        Number.isFinite(Number(value)) &&
+                        Number(value) >= 0) ||
+                      "Enter a valid amount",
+                  })}
+                />
+              </Field>
+            </fieldset>
 
             <Field id="o-payment-status" label="Payment status">
               <Controller
@@ -620,7 +629,9 @@ const OrderForm = ({
                     {describeEvent(entry.event)}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {formatDateTime(entry.at)}
+                    {[timelineActor(entry), formatDateTime(entry.at)]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </p>
                   {entry.note && (
                     <p className="mt-0.5 text-xs text-muted-foreground">

@@ -46,7 +46,8 @@ export type AdminShippingAddress = {
 export type OrderTimelineEntry = {
   event: string;
   at: string;
-  by?: string;
+  // detail API নামসহ অবজেক্ট দেয়; ইউজার মুছে গেলে null
+  by?: { _id: string; name?: string } | string | null;
   note?: string;
 };
 

@@ -3,6 +3,7 @@ import type {
   AdminOrderStatus,
   AdminPaymentMethod,
   AdminPaymentStatus,
+  OrderTimelineEntry,
 } from "@/lib/api/admin-orders.api";
 
 export const ORDER_STATUSES: AdminOrderStatus[] = [
@@ -55,6 +56,11 @@ export const PAYMENT_METHOD_LABELS: Record<AdminPaymentMethod, string> = {
 // bKash/Nagad: অ্যাডমিন Transaction ID মিলিয়ে "Paid" করার আগে অর্ডার processing-এ যায় না
 export const isMobilePayment = (method: AdminPaymentMethod) =>
   method === "bkash" || method === "nagad";
+
+// ব্যাকএন্ডের EDITABLE_STATUSES-এর উল্টো: এই অবস্থায় আইটেম, ঠিকানা আর ডেলিভারি চার্জ বদলানো যায় না
+// (পেমেন্ট আর নোট সব অবস্থায় বদলানো যায়)
+export const isOrderLocked = (status: AdminOrderStatus) =>
+  status === "shipped" || status === "delivered" || status === "cancelled";
 
 /* ============================================================
    অ্যাডভান্স / জমা টাকার হিসাব (ব্যাকএন্ডের orders.rules.ts-এর সঙ্গে মেলানো)
@@ -121,7 +127,7 @@ const PAYMENT_EVENT_LABELS: Record<string, string> = {
 // টাইমলাইনের event-কে পড়ার মতো বাক্যে
 export const describeEvent = (event: string): string => {
   if (event === "created") return "Order placed";
-  if (event === "edited") return "Order edited by admin";
+  if (event === "edited") return "Order edited";
 
   if (event.startsWith("status:")) {
     const status = event.slice("status:".length) as AdminOrderStatus;
@@ -129,6 +135,15 @@ export const describeEvent = (event: string): string => {
   }
 
   return PAYMENT_EVENT_LABELS[event] ?? event;
+};
+
+// কে করেছে: নাম থাকলে নাম; ইউজার মুছে গেলে "Admin"; অর্ডার তৈরির এন্ট্রিতে নাম না পেলে কিছু না
+export const timelineActor = (entry: OrderTimelineEntry): string | null => {
+  const { by } = entry;
+
+  if (by && typeof by === "object" && by.name?.trim()) return by.name.trim();
+
+  return entry.event === "created" ? null : "Admin";
 };
 
 // react-query কী: তালিকা, summary আর একটি অর্ডারের detail
