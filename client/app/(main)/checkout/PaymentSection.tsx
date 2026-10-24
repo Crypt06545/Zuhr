@@ -119,7 +119,10 @@ const MobilePayment = ({
             {amount !== null ? (
               <strong className="tabular-nums">{formatPrice(amount)}</strong>
             ) : (
-              <strong>the total shown in your order summary</strong>
+              <>
+                <strong>the total shown in your order summary</strong> (select
+                your district first)
+              </>
             )}
             .
           </p>

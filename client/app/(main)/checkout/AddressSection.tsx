@@ -2,6 +2,8 @@
 
 import { useFormContext } from "react-hook-form";
 
+import { useCheckoutTotals } from "@/hooks/useCheckoutTotals";
+import { formatPrice } from "@/lib/api/Products.api";
 import { DISTRICTS } from "@/lib/checkout-config";
 import type { CheckoutFormValues } from "@/lib/checkout";
 
@@ -13,6 +15,7 @@ const AddressSection = () => {
     register,
     formState: { errors },
   } = useFormContext<CheckoutFormValues>();
+  const { shipping } = useCheckoutTotals();
 
   return (
     <CheckoutSection
@@ -26,6 +29,13 @@ const AddressSection = () => {
           htmlFor="district"
           required
           error={errors.district?.message}
+          hint={
+            shipping !== null
+              ? shipping === 0
+                ? "(free delivery)"
+                : `(delivery ${formatPrice(shipping)})`
+              : undefined
+          }
         >
           <select
             id="district"

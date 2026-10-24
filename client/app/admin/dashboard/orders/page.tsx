@@ -1,20 +1,15 @@
-
-import { getOrders } from "@/lib/mock-dashboard";
-import { PageHeader } from "../PageHeader";
 import { OrdersManager } from "../OrdersManager";
+import { PageHeader } from "../PageHeader";
 
-const OrdersPage = async () => {
-  const orders = await getOrders();
-
-  return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
-      <PageHeader
-        title="Orders"
-        description="View orders, edit their details or remove them."
-      />
-      <OrdersManager orders={orders} />
-    </div>
-  );
-};
+// অর্ডার এখন ব্রাউজার থেকে সরাসরি ব্যাকএন্ড API দিয়ে আসে (মক ডাটা নেই)
+const OrdersPage = () => (
+  <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
+    <PageHeader
+      title="Orders"
+      description="Review orders, verify payments, update their status or edit their details."
+    />
+    <OrdersManager />
+  </div>
+);
 
 export default OrdersPage;

@@ -1,11 +1,17 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { OrderStatus } from "@/lib/mock-dashboard";
+import type { AdminOrderStatus } from "@/lib/api/admin-orders.api";
 
 export const STATUS_META: Record<
-  OrderStatus,
+  AdminOrderStatus,
   { label: string; className: string; dot: string }
 > = {
+  pending: {
+    label: "Pending",
+    className:
+      "bg-slate-50 text-slate-700 ring-slate-600/20 dark:bg-slate-500/10 dark:text-slate-300 dark:ring-slate-500/20",
+    dot: "bg-slate-500",
+  },
   delivered: {
     label: "Delivered",
     className:
@@ -32,7 +38,7 @@ export const STATUS_META: Record<
   },
 };
 
-export const OrderStatusBadge = ({ status }: { status: OrderStatus }) => {
+export const OrderStatusBadge = ({ status }: { status: AdminOrderStatus }) => {
   const { label, className, dot } = STATUS_META[status];
 
   return (

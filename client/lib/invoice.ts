@@ -1,9 +1,9 @@
-
-import { STATUS_META } from "@/app/admin/dashboard/OrderStatusBadge";
-import type { Order } from "@/lib/mock-dashboard";
-
-import { toPublicOrderId } from "@/lib/routes";
-import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS } from "./api/order-options";
+import type { AdminOrderDetail } from "@/lib/api/admin-orders.api";
+import {
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_STATUS_LABELS,
+  STATUS_LABELS,
+} from "@/lib/admin-orders";
 
 export interface InvoiceItem {
   id: string;
@@ -31,36 +31,34 @@ export interface InvoiceData {
   total: number;
 }
 
-// The only place that knows the Order shape. The mock order has no unit price,
-// shipping, discount or transaction fields, so they default here.
-// When your real API provides them, map them in this function and nothing else changes.
-export const orderToInvoice = (order: Order): InvoiceData => {
-  const quantity = Math.max(order.quantity, 1);
+// ব্যাকএন্ডের অর্ডার থেকে ইনভয়েসের তথ্য। Order shape শুধু এই ফাংশন জানে।
+export const orderToInvoice = (order: AdminOrderDetail): InvoiceData => {
+  const { shippingAddress: ship } = order;
 
   return {
-    // No leading "#": the invoice header already prints one before the number
-    orderId: toPublicOrderId(order.id),
-    createdAt: order.date,
-    orderStatus: STATUS_META[order.status].label,
+    // শুরুতে "#" নেই: ইনভয়েসের হেডার নিজেই "#" বসায়
+    orderId: order.orderNumber,
+    createdAt: order.createdAt,
+    orderStatus: STATUS_LABELS[order.status],
     paymentStatus: PAYMENT_STATUS_LABELS[order.paymentStatus],
     paymentMethod: PAYMENT_METHOD_LABELS[order.paymentMethod],
-    transactionId: null,
-    customerName: order.customer,
-    customerEmail: order.email,
-    customerPhone: order.phone,
-    address: [order.address, order.city].filter(Boolean).join(", "),
-    items: [
-      {
-        id: order.id,
-        name: order.product,
-        variantLabel: null,
-        quantity,
-        price: order.amount / quantity,
-      },
-    ],
-    discount: 0,
-    couponCode: null,
-    shippingCharge: 0,
-    total: order.amount,
+    transactionId: order.paymentTransactionId ?? null,
+    customerName: ship.fullName,
+    customerEmail: order.customer.email,
+    customerPhone: ship.phone,
+    address: [ship.addressLine, ship.city, ship.district, ship.postalCode]
+      .filter(Boolean)
+      .join(", "),
+    items: order.items.map((item) => ({
+      id: `${item.product}:${item.variant}`,
+      name: item.name,
+      variantLabel: [item.size, item.color].filter(Boolean).join(" / ") || null,
+      quantity: item.quantity,
+      price: item.unitPrice,
+    })),
+    discount: order.discountTotal,
+    couponCode: null, // API-তে কুপন কোড ফিল্ড নেই
+    shippingCharge: order.shippingFee,
+    total: order.total,
   };
 };

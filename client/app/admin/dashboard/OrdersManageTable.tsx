@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -15,47 +15,103 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { STATUSES } from "@/lib/dashboard-stats";
-import { formatCurrency, formatDate } from "@/lib/format";
-import type { Order, OrderStatus } from "@/lib/mock-dashboard";
-
+import type {
+  AdminOrderRow,
+  AdminOrderStatus,
+  AdminPaymentStatus,
+} from "@/lib/api/admin-orders.api";
+import { formatPrice } from "@/lib/api/Products.api";
+import {
+  formatDateTime,
+  ORDER_STATUSES,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_STATUSES,
+  PAYMENT_STATUS_LABELS,
+  PAYMENT_STATUS_STYLES,
+  receivedAmount,
+} from "@/lib/admin-orders";
 import { getInvoicePath } from "@/lib/routes";
+import { cn } from "@/lib/utils";
+
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { RowActions } from "./RowActions";
-import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/api/order-options";
 
 const initials = (name: string) =>
   name
     .split(" ")
+    .filter(Boolean)
     .map((part) => part[0])
     .slice(0, 2)
     .join("")
-    .toUpperCase();
+    .toUpperCase() || "?";
+
+// Status ব্যাজের মতো একই আকার ও ডট; রঙ আসে PAYMENT_STATUS_STYLES থেকে
+const PaymentBadge = ({ status }: { status: AdminPaymentStatus }) => (
+  <Badge
+    variant="outline"
+    className={cn(
+      "gap-1.5 rounded-full border-transparent px-2.5 py-0.5 text-xs font-medium",
+      PAYMENT_STATUS_STYLES[status],
+    )}
+  >
+    <span className="h-1.5 w-1.5 rounded-full bg-current" />
+    {PAYMENT_STATUS_LABELS[status]}
+  </Badge>
+);
+
+// প্রথম আইটেমের নাম + "আরও N টি"
+const itemsLabel = (order: AdminOrderRow) => {
+  const [first] = order.items;
+  if (!first) return "—";
+
+  const more = order.items.length - 1;
+
+  return (
+    <>
+      {first.name}
+      {first.quantity > 1 && (
+        <span className="text-muted-foreground"> × {first.quantity}</span>
+      )}
+      {more > 0 && (
+        <span className="block text-xs text-muted-foreground">
+          +{more} more {more === 1 ? "item" : "items"}
+        </span>
+      )}
+    </>
+  );
+};
 
 interface OrdersManageTableProps {
-  orders: Order[];
-  updatingId: string | null;
-  onStatusChange: (order: Order, status: OrderStatus) => void;
-  onEdit: (order: Order) => void;
-  onDelete: (order: Order) => void;
+  orders: AdminOrderRow[];
+  busyId: string | null; // যে অর্ডারের ওপর এখন কাজ চলছে
+  onStatusChange: (order: AdminOrderRow, status: AdminOrderStatus) => void;
+  onPaymentChange: (
+    order: AdminOrderRow,
+    paymentStatus: AdminPaymentStatus,
+  ) => void;
+  onRecordPayment: (order: AdminOrderRow) => void;
+  onEdit: (order: AdminOrderRow) => void;
+  onDelete: (order: AdminOrderRow) => void;
 }
 
 export const OrdersManageTable = ({
   orders,
-  updatingId,
+  busyId,
   onStatusChange,
+  onPaymentChange,
+  onRecordPayment,
   onEdit,
   onDelete,
 }: OrdersManageTableProps) => (
   <Table>
     <TableHeader>
       <TableRow>
+        <TableHead>Order</TableHead>
         <TableHead>Customer</TableHead>
-        <TableHead className="hidden md:table-cell">Product</TableHead>
-        <TableHead className="hidden sm:table-cell">Date</TableHead>
-        <TableHead className="hidden lg:table-cell">Payment</TableHead>
+        <TableHead className="hidden lg:table-cell">Items</TableHead>
+        <TableHead className="hidden md:table-cell">Payment</TableHead>
         <TableHead>Status</TableHead>
-        <TableHead className="text-right">Amount</TableHead>
+        <TableHead className="text-right">Total</TableHead>
         <TableHead className="w-32">
           <span className="sr-only">Actions</span>
         </TableHead>
@@ -73,82 +129,123 @@ export const OrdersManageTable = ({
         </TableRow>
       ) : (
         orders.map((order) => {
-          const isUpdating = updatingId === order.id;
+          const busy = busyId === order._id;
+          const received = receivedAmount(order);
 
           return (
-            <TableRow key={order.id}>
+            <TableRow key={order._id}>
+              <TableCell>
+                <p className="font-mono text-[13px] font-semibold">
+                  {order.orderNumber}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {formatDateTime(order.createdAt)}
+                </p>
+              </TableCell>
+
               <TableCell>
                 <div className="flex items-center gap-3">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-primary/15 text-xs text-accent-foreground">
-                      {initials(order.customer)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <span
+                    aria-hidden="true"
+                    className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-medium text-accent-foreground sm:flex"
+                  >
+                    {initials(order.customer.name)}
+                  </span>
                   <div className="min-w-0">
-                    <p className="max-w-[7rem] truncate text-sm font-medium sm:max-w-none">
-                      {order.customer}
+                    <p className="max-w-[8rem] truncate text-sm font-medium sm:max-w-[12rem]">
+                      {order.customer.name}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {order.id}
+                      {order.customer.phone}
                     </p>
                   </div>
                 </div>
               </TableCell>
-              <TableCell className="hidden md:table-cell">
-                {order.product}
-                {order.quantity > 1 && (
-                  <span className="text-muted-foreground">
-                    {" "}
-                    × {order.quantity}
-                  </span>
-                )}
-              </TableCell>
-              <TableCell className="hidden text-muted-foreground sm:table-cell">
-                {formatDate(order.date)}
-              </TableCell>
+
               <TableCell className="hidden lg:table-cell">
+                {itemsLabel(order)}
+              </TableCell>
+
+              <TableCell className="hidden md:table-cell">
                 <p className="text-sm">
                   {PAYMENT_METHOD_LABELS[order.paymentMethod]}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {PAYMENT_STATUS_LABELS[order.paymentStatus]}
-                </p>
+                <Select
+                  value={order.paymentStatus}
+                  disabled={busy || order.status === "cancelled"}
+                  onValueChange={(value) =>
+                    onPaymentChange(order, value as AdminPaymentStatus)
+                  }
+                >
+                  <SelectTrigger
+                    className="-ml-1 h-8 w-auto gap-1.5 border-transparent bg-transparent px-1 shadow-none hover:bg-muted focus-visible:ring-2"
+                    aria-label={`Change payment status for order ${order.orderNumber}`}
+                  >
+                    <PaymentBadge status={order.paymentStatus} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_STATUSES.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        <PaymentBadge status={status} />
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {order.paymentStatus === "partial" && (
+                  <button
+                    type="button"
+                    onClick={() => onRecordPayment(order)}
+                    disabled={busy || order.status === "cancelled"}
+                    className="block text-[11px] tabular-nums text-muted-foreground hover:text-foreground hover:underline disabled:pointer-events-none"
+                  >
+                    Paid {formatPrice(received)} · Due{" "}
+                    {formatPrice(Math.max(0, order.total - received))}
+                  </button>
+                )}
+                {order.paymentTransactionId && (
+                  <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                    {order.paymentTransactionId}
+                  </p>
+                )}
               </TableCell>
+
               <TableCell>
                 <div className="flex items-center gap-1.5">
                   <Select
                     value={order.status}
-                    disabled={isUpdating}
+                    disabled={busy}
                     onValueChange={(value) =>
-                      onStatusChange(order, value as OrderStatus)
+                      onStatusChange(order, value as AdminOrderStatus)
                     }
                   >
                     <SelectTrigger
                       className="h-8 w-auto gap-1.5 border-transparent bg-transparent px-1 shadow-none hover:bg-muted focus-visible:ring-2"
-                      aria-label={`Change status for order ${order.id}`}
+                      aria-label={`Change status for order ${order.orderNumber}`}
                     >
                       <OrderStatusBadge status={order.status} />
                     </SelectTrigger>
                     <SelectContent>
-                      {STATUSES.map((status) => (
+                      {ORDER_STATUSES.map((status) => (
                         <SelectItem key={status} value={status}>
                           <OrderStatusBadge status={status} />
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {isUpdating && (
+                  {busy && (
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   )}
                 </div>
               </TableCell>
+
               <TableCell className="text-right font-medium tabular-nums">
-                {formatCurrency(order.amount)}
+                {formatPrice(order.total)}
               </TableCell>
+
               <TableCell>
                 <RowActions
-                  label={`order ${order.id}`}
-                  invoiceHref={getInvoicePath(order.id)}
+                  label={`order ${order.orderNumber}`}
+                  invoiceHref={getInvoicePath(order._id)}
                   onEdit={() => onEdit(order)}
                   onDelete={() => onDelete(order)}
                 />

@@ -15,13 +15,11 @@ const ConfirmButton = () => {
   } = useFormContext<CheckoutFormValues>();
   const { total, shipping } = useCheckoutTotals();
 
-  const feeKnown = shipping !== null;
-
   return (
     <div className="space-y-3">
       <Button
         type="submit"
-        disabled={isSubmitting || !feeKnown}
+        disabled={isSubmitting}
         className="h-12 w-full gap-2 text-[15px] font-bold"
       >
         {isSubmitting ? (
@@ -29,10 +27,11 @@ const ConfirmButton = () => {
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
             Placing order...
           </>
-        ) : feeKnown ? (
-          <>Confirm order · {formatPrice(total)}</>
+        ) : shipping === null ? (
+          // জেলা না বাছা পর্যন্ত সঠিক মোট জানা নেই, তাই টাকা দেখাই না
+          "Confirm order"
         ) : (
-          "Loading delivery charge..."
+          <>Confirm order · {formatPrice(total)}</>
         )}
       </Button>
       <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">

@@ -124,10 +124,9 @@ const OrderSummary = () => {
               <dt className="text-muted-foreground">Delivery</dt>
               <dd className="tabular-nums">
                 {shipping === null ? (
-                  <span
-                    aria-label="Loading"
-                    className="inline-block h-4 w-12 animate-pulse rounded bg-muted"
-                  />
+                  <span className="text-xs text-muted-foreground">
+                    Select district
+                  </span>
                 ) : shipping === 0 ? (
                   "Free"
                 ) : (

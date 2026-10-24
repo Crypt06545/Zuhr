@@ -8,9 +8,7 @@ import { FormProvider, useForm } from "react-hook-form";
 import { Loader2, ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { useOrderConfig } from "@/hooks/useOrderConfig";
 import {
   apiErrorMessage,
   apiErrorStatus,
@@ -25,11 +23,10 @@ import {
 import { useCartStore } from "@/store/cart-store";
 
 import AddressSection from "./AddressSection";
-
+import ConfirmButton from "./ConfirmButton";
 import ContactSection from "./ContactSection";
 import OrderSummary from "./OrderSummary";
 import PaymentSection from "./PaymentSection";
-import ConfirmButton from "./ConfirmButton";
 
 /* ============================================================
    লোড হওয়ার সময়, খালি cart, অর্ডার হয়ে যাওয়ার পর
@@ -82,7 +79,6 @@ const CheckoutForm = ({ onPlaced }: { onPlaced: () => void }) => {
 
   const items = useCartStore((state) => state.items);
   const { data: user } = useCurrentUser();
-  const config = useOrderConfig();
 
   // এই চেষ্টার key: ব্যর্থ হয়ে আবার চাপলেও একই key যায়, তাই কখনো দুটো অর্ডার হয় না
   const idempotencyKey = useRef(newIdempotencyKey());
@@ -136,23 +132,6 @@ const CheckoutForm = ({ onPlaced }: { onPlaced: () => void }) => {
         className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-8 xl:grid-cols-[minmax(0,1fr)_440px]"
       >
         <div className="min-w-0 space-y-6">
-          {config.isError && (
-            <div
-              role="alert"
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600"
-            >
-              <span>Could not load the delivery charge.</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => config.refetch()}
-              >
-                Try again
-              </Button>
-            </div>
-          )}
-
           <ContactSection />
           <AddressSection />
           <PaymentSection />

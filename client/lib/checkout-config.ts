@@ -1,6 +1,4 @@
 // lib/checkout-config.ts
-// Checkout-এর স্থির তথ্য: পেমেন্ট পদ্ধতি, নম্বর, জেলা, যাচাইয়ের নিয়ম।
-// ডেলিভারি চার্জ এখানে নেই: সার্ভার ঠিক করে (GET /orders/config)।
 
 export type PaymentMethod = "cod" | "bkash" | "nagad";
 
@@ -33,6 +31,30 @@ export const PAYMENT_ACCOUNTS: Record<
 > = {
   bkash: { number: "01XXXXXXXXX", type: "Personal · Send Money" },
   nagad: { number: "01XXXXXXXXX", type: "Personal · Send Money" },
+};
+
+/* ============================================================
+   DELIVERY CHARGE
+   বগুড়ার ভেতরে ৳৬০, বাইরে ৳১৩০।
+   এটা শুধু দেখানোর জন্য। আসল মোট ব্যাকএন্ড নিজে হিসাব করে (জেলা দেখে),
+   তাই ব্যাকএন্ডের সংখ্যার সঙ্গে এখানকার সংখ্যা সবসময় এক রাখতে হবে।
+   ============================================================ */
+
+export const SHIPPING = {
+  homeDistrict: "Bogura",
+  inside: 60,
+  outside: 130,
+} as const;
+
+// জেলা না বাছা পর্যন্ত চার্জ নেই (null)
+export const shippingFeeFor = (district: string): number | null => {
+  const value = district.trim().toLowerCase();
+
+  if (!value) return null;
+
+  return value === SHIPPING.homeDistrict.toLowerCase()
+    ? SHIPPING.inside
+    : SHIPPING.outside;
 };
 
 // বাংলাদেশের মোবাইল: 01 + (3-9) + আরও ৮ সংখ্যা, শুরুতে +88 বা 88 থাকতে পারে
