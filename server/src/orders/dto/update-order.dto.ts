@@ -52,6 +52,14 @@ export class UpdateOrderDto {
   @IsEnum(PaymentStatus)
   paymentStatus?: PaymentStatus;
 
+  // Total money received so far (advance or full), not the new installment.
+  // The server works out pending / partial / paid from it.
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(10000000)
+  paidAmount?: number;
+
   @IsOptional()
   @Transform(trim)
   @IsString()

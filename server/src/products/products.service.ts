@@ -475,7 +475,9 @@ export class ProductsService {
             },
           },
         ],
-        { new: false, session },
+        // FIX (Mongoose 9): an array update is a pipeline, so it must be opted in
+        // explicitly. `returnDocument: 'before'` is the modern name of `new: false`.
+        { returnDocument: 'before', updatePipeline: true, session },
       )
       .select('slug variants lowStockThreshold stockStatus')
       .lean<{

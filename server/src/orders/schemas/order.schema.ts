@@ -13,6 +13,7 @@ export enum OrderStatus {
 
 export enum PaymentStatus {
   PENDING = 'pending',
+  PARTIAL = 'partial',
   PAID = 'paid',
   FAILED = 'failed',
   REFUNDED = 'refunded',
@@ -177,6 +178,11 @@ export class Order {
     default: PaymentStatus.PENDING,
   })
   paymentStatus!: PaymentStatus;
+
+  // Money received so far (advance or full). 0 until someone pays.
+  // Orders saved before this field existed count as fully received when paid.
+  @Prop({ type: Number, default: 0, min: 0 })
+  paidAmount!: number;
 
   // bKash / Nagad only. The admin checks these against the real payment.
   @Prop({ type: String, trim: true, uppercase: true })

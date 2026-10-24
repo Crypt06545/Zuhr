@@ -54,7 +54,9 @@ import {
 import {
   ADMIN_CANCELLABLE,
   CUSTOMER_CANCELLABLE,
+  derivePaymentStatus,
   EDITABLE_STATUSES,
+  receivedAmount,
   statusesThatCanMoveTo,
 } from './orders.rules.js';
 import { UpdateOrderDto } from './dto/update-order.dto.js';
@@ -66,6 +68,20 @@ type OrderLean = Order & {
 };
 
 type LineInput = { productId: string; variantId: string; quantity: number };
+
+type TimelineInput = {
+  event: string;
+  at: Date;
+  by: Types.ObjectId;
+  note?: string;
+};
+
+type PaymentOutcome = {
+  status: PaymentStatus;
+  paid: number;
+  event?: string;
+  note?: string;
+};
 
 export interface OrderListResult {
   items: unknown[];
@@ -98,6 +114,12 @@ const toCents = (amount: number) => Math.round(amount * 100);
 const fromCents = (cents: number) => cents / 100;
 const lineTotal = (unitPrice: number, quantity: number) =>
   fromCents(toCents(unitPrice) * quantity);
+
+// failed / refunded mean no money is held for this order
+const isVoidPayment = (
+  value?: PaymentStatus,
+): value is PaymentStatus.FAILED | PaymentStatus.REFUNDED =>
+  value === PaymentStatus.FAILED || value === PaymentStatus.REFUNDED;
 
 const escapeRegex = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -402,35 +424,73 @@ export class OrdersService {
             },
           },
         },
-        { new: true },
+        { returnDocument: 'after' },
       )
       .lean<OrderLean>()
       .exec();
 
     if (!updated) {
-      const exists = await this.orderModel.exists({ _id: id });
+      const current = await this.orderModel
+        .findById(id)
+        .select('status paymentMethod paymentStatus')
+        .lean<Pick<OrderLean, 'status' | 'paymentMethod' | 'paymentStatus'>>()
+        .exec();
 
-      if (!exists) throw new NotFoundException('Order not found');
+      if (!current) throw new NotFoundException('Order not found');
+
+      if (!allowedFrom.includes(current.status)) {
+        throw new ConflictException(
+          `A ${current.status} order cannot be moved to ${dto.status}`,
+        );
+      }
+
+      if (
+        dto.status === OrderStatus.PROCESSING &&
+        current.paymentMethod !== PaymentMethod.COD &&
+        current.paymentStatus !== PaymentStatus.PAID
+      ) {
+        throw new ConflictException(
+          `Mark the ${current.paymentMethod} payment as Paid before processing (now: ${current.paymentStatus})`,
+        );
+      }
 
       throw new ConflictException(
-        dto.status === OrderStatus.PROCESSING
-          ? 'The order is not pending, or its payment is not verified yet'
-          : `This order cannot be moved to ${dto.status} from its current status`,
+        'The order was changed by someone else. Reload and try again',
       );
     }
 
-    // Cash on delivery is paid once it is delivered
+    // Cash on delivery: the rest of the money (all of it, or what is left after
+    // an advance) is collected at the door, so the order is fully paid now
     if (
       dto.status === OrderStatus.DELIVERED &&
       updated.paymentMethod === PaymentMethod.COD &&
-      updated.paymentStatus === PaymentStatus.PENDING
+      (updated.paymentStatus === PaymentStatus.PENDING ||
+        updated.paymentStatus === PaymentStatus.PARTIAL)
     ) {
       updated =
         (await this.orderModel
           .findOneAndUpdate(
-            { _id: id, paymentStatus: PaymentStatus.PENDING },
-            { $set: { paymentStatus: PaymentStatus.PAID } },
-            { new: true },
+            {
+              _id: id,
+              paymentStatus: {
+                $in: [PaymentStatus.PENDING, PaymentStatus.PARTIAL],
+              },
+            },
+            {
+              $set: {
+                paymentStatus: PaymentStatus.PAID,
+                paidAmount: updated.total,
+              },
+              $push: {
+                timeline: {
+                  event: 'payment:paid',
+                  at: now,
+                  by: new Types.ObjectId(actorId),
+                  note: 'Collected on delivery',
+                },
+              },
+            },
+            { returnDocument: 'after' },
           )
           .lean<OrderLean>()
           .exec()) ?? updated;
@@ -444,7 +504,7 @@ export class OrdersService {
   // ───────────────────────── Admin: edit ─────────────────────────
 
   /**
-   * Edit items, address, shipping fee, payment status or note.
+   * Edit items, address, shipping fee, payment or note.
    * Changing a quantity moves only the difference in stock, inside one
    * transaction with the order change. Two edits of the same order at once
    * cannot overwrite each other: Mongo detects the conflict and this runs again.
@@ -495,27 +555,43 @@ export class OrdersService {
         set['customer.phone'] = dto.shippingAddress.phone;
       }
 
-      if (dto.paymentStatus) set.paymentStatus = dto.paymentStatus;
       if (dto.adminNote !== undefined) set.adminNote = dto.adminNote;
 
       const shippingFee = dto.shippingFee ?? order.shippingFee;
-      Object.assign(
-        set,
-        this.computeTotals(items, shippingFee, order.discountTotal),
+      const totals = this.computeTotals(
+        items,
+        shippingFee,
+        order.discountTotal,
       );
+
+      // Payment is worked out against the new total, so an edit that changes
+      // the total also keeps pending / partial / paid correct
+      const payment = this.resolvePayment(order, dto, totals.total);
+
+      Object.assign(set, totals, {
+        paymentStatus: payment.status,
+        paidAmount: payment.paid,
+      });
+
+      const now = new Date();
+      const by = new Types.ObjectId(actorId);
+      const timeline: TimelineInput[] = [{ event: 'edited', at: now, by }];
+
+      if (payment.event) {
+        timeline.push({
+          event: payment.event,
+          at: now,
+          by,
+          note: payment.note,
+        });
+      }
 
       const result = await this.orderModel
         .findOneAndUpdate(
           { _id: order._id, status: order.status, updatedAt: order.updatedAt },
           {
             $set: set,
-            $push: {
-              timeline: {
-                event: 'edited',
-                at: new Date(),
-                by: new Types.ObjectId(actorId),
-              },
-            },
+            $push: { timeline: { $each: timeline } },
           },
           { new: true, session },
         )
@@ -561,6 +637,78 @@ export class OrdersService {
   }
 
   // ───────────────────────── Internals ─────────────────────────
+
+  /**
+   * Works out how much money has been received and the payment status after
+   * an edit. `paidAmount` is the total received so far, not the new installment.
+   *
+   *  - paidAmount sent   -> it decides (0 = pending, all = paid, else partial);
+   *                         only failed / refunded can be forced next to it
+   *  - only paymentStatus -> paid = whole total, pending / failed / refunded = 0,
+   *                         partial needs an amount
+   *  - neither           -> status follows the money already received, so a
+   *                         total that grew or shrank is reflected
+   *                         (failed / refunded stay until the admin changes them)
+   */
+  private resolvePayment(
+    order: OrderLean,
+    dto: UpdateOrderDto,
+    newTotal: number,
+  ): PaymentOutcome {
+    const before = receivedAmount(order);
+    let paid = before;
+    let status = order.paymentStatus;
+
+    if (dto.paidAmount !== undefined) {
+      if (isVoidPayment(dto.paymentStatus) && dto.paidAmount > 0) {
+        throw new BadRequestException(
+          `A ${dto.paymentStatus} payment cannot have a received amount`,
+        );
+      }
+
+      paid = dto.paidAmount;
+      status = isVoidPayment(dto.paymentStatus)
+        ? dto.paymentStatus
+        : derivePaymentStatus(paid, newTotal);
+    } else if (dto.paymentStatus !== undefined) {
+      if (dto.paymentStatus === PaymentStatus.PARTIAL) {
+        throw new BadRequestException(
+          'Send the received amount for a partial payment',
+        );
+      }
+
+      paid = dto.paymentStatus === PaymentStatus.PAID ? newTotal : 0;
+      status = dto.paymentStatus;
+    } else if (!isVoidPayment(order.paymentStatus)) {
+      status = derivePaymentStatus(paid, newTotal);
+    }
+
+    if (toCents(paid) > toCents(newTotal)) {
+      throw new BadRequestException(
+        'The received amount cannot be more than the order total. Lower the received amount first',
+      );
+    }
+
+    // One timeline entry for the money side of this edit
+    const delta = toCents(paid) - toCents(before);
+    let event: string | undefined;
+    let note: string | undefined;
+
+    if (delta > 0) {
+      event =
+        status === PaymentStatus.PAID ? 'payment:paid' : 'payment:advance';
+      note = `Received ${fromCents(delta)} BDT (${paid} of ${newTotal} BDT)`;
+    } else if (status !== order.paymentStatus) {
+      event = `payment:${status}`;
+      if (delta < 0)
+        note = `Received amount lowered by ${fromCents(-delta)} BDT`;
+    } else if (delta < 0) {
+      event = 'payment:adjusted';
+      note = `Received amount lowered by ${fromCents(-delta)} BDT`;
+    }
+
+    return { status, paid, event, note };
+  }
 
   /**
    * Cancel and give the stock back, in one transaction.
