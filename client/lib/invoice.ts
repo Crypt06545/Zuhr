@@ -44,7 +44,7 @@ export const orderToInvoice = (order: AdminOrderDetail): InvoiceData => {
     paymentMethod: PAYMENT_METHOD_LABELS[order.paymentMethod],
     transactionId: order.paymentTransactionId ?? null,
     customerName: ship.fullName,
-    customerEmail: order.customer.email,
+    customerEmail: order.customer.email ?? null,
     customerPhone: ship.phone,
     address: [ship.addressLine, ship.city, ship.district, ship.postalCode]
       .filter(Boolean)

@@ -314,8 +314,17 @@ const OrderForm = ({
         <section className="space-y-3">
           <SectionTitle>Customer and payment</SectionTitle>
           <dl className="grid gap-4 sm:grid-cols-2">
-            <Fact label="Customer">{order.customer.name}</Fact>
-            <Fact label="Account email">{order.customer.email}</Fact>
+            {order.customer.email && (
+              <Fact label="Email">{order.customer.email}</Fact>
+            )}
+            {order.source === "admin" && (
+              <Fact label="Placed by">
+                {typeof order.placedBy === "object" && order.placedBy?.name
+                  ? order.placedBy.name
+                  : "Admin"}{" "}
+                (admin)
+              </Fact>
+            )}
             <Fact label="Payment method">
               {PAYMENT_METHOD_LABELS[order.paymentMethod]}
             </Fact>

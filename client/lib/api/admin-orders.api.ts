@@ -55,7 +55,10 @@ export type OrderTimelineEntry = {
 export type AdminOrderRow = {
   _id: string;
   orderNumber: string;
-  customer: { name: string; phone: string; email: string };
+  // ফোনের কাস্টমারের ইমেইল না-ও থাকতে পারে
+  customer: { name: string; phone: string; email?: string };
+  // web = কাস্টমার নিজে, admin = অ্যাডমিন কাস্টমারের হয়ে বসিয়েছে
+  source?: "web" | "admin";
   shippingAddress: AdminShippingAddress;
   items: AdminOrderItem[];
   subtotal: number;
@@ -80,6 +83,8 @@ export type AdminOrderRow = {
 // একটি অর্ডারের পুরো তথ্য (timeline সহ)
 export type AdminOrderDetail = AdminOrderRow & {
   timeline: OrderTimelineEntry[];
+  // detail API নামসহ অবজেক্ট দেয় (source = admin হলে)
+  placedBy?: { _id: string; name?: string } | string | null;
 };
 
 export type AdminOrdersFilters = {
@@ -111,6 +116,21 @@ export type UpdateOrderBody = {
   expectedUpdatedAt?: string;
 };
 
+// অ্যাডমিন কাস্টমারের হয়ে অর্ডার বসাচ্ছে (দাম ও স্টক সার্ভার ডাটাবেস থেকে নেয়)
+export type CreateAdminOrderBody = {
+  items: { productId: string; variantId: string; quantity: number }[];
+  shippingAddress: AdminShippingAddress;
+  customerEmail?: string;
+  paymentMethod?: Exclude<AdminPaymentMethod, "card">;
+  paymentTransactionId?: string;
+  paymentSenderPhone?: string;
+  // না দিলে সার্ভার জেলা অনুযায়ী সাধারণ চার্জ বসায়
+  shippingFee?: number;
+  // অ্যাডভান্স বা পুরো টাকা, যা এখনই পাওয়া গেছে
+  paidAmount?: number;
+  adminNote?: string;
+};
+
 // ব্যাকএন্ড { message, data } দিতে পারে; data না থাকলে পুরো body-ই ধরি
 const unwrap = <T>(res: { data: unknown }): T => {
   const body = res.data as { data?: unknown };
@@ -134,6 +154,15 @@ export const getAdminOrderSummaryApi = (): Promise<OrderSummaryCounts> =>
   API.get("/orders/admin/summary").then((res) =>
     unwrap<OrderSummaryCounts>(res),
   );
+
+// idempotencyKey: একই ফর্ম দুবার সাবমিট হলেও একটাই অর্ডার হয়
+export const createAdminOrderApi = (
+  body: CreateAdminOrderBody,
+  idempotencyKey: string,
+) =>
+  API.post("/orders/admin", body, {
+    headers: { "Idempotency-Key": idempotencyKey },
+  }).then((res) => unwrap<AdminOrderDetail>(res));
 
 export const updateOrderStatusApi = (
   id: string,

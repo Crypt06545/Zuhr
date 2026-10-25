@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { PaginationBar } from "@/components/common/Paginationbar";
@@ -38,7 +39,7 @@ import {
 } from "@/lib/admin-orders";
 
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
-
+import { OrderCreateSheet } from "./OrderCreateSheet";
 import { OrderEditSheet } from "./OrderEditSheet";
 import { OrderPaymentDialog } from "./OrderPaymentDialog";
 import { OrdersManageTable } from "./OrdersManageTable";
@@ -57,6 +58,7 @@ export const OrdersManager = () => {
   );
   const [limit, setLimit] = useState(20);
 
+  const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<AdminOrderRow | null>(null);
   const [recordingPayment, setRecordingPayment] =
@@ -121,7 +123,7 @@ export const OrdersManager = () => {
   ) => {
     if (status === order.status || busyId) return;
 
-    // বাতিল ফেরানো যায় না, তাই আগে নিশ্চিত করি
+    // বাতিল করার আগে কারণ জিজ্ঞেস করি
     if (status === "cancelled") {
       setCancelling(order);
       return;
@@ -219,11 +221,22 @@ export const OrdersManager = () => {
     <>
       <Card>
         <CardHeader className="gap-4">
-          <div>
-            <CardTitle>All orders</CardTitle>
-            <CardDescription>
-              Page {list.page} · {list.items.length} orders shown
-            </CardDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle>All orders</CardTitle>
+              <CardDescription>
+                Page {list.page} · {list.items.length} orders shown
+              </CardDescription>
+            </div>
+
+            <Button
+              type="button"
+              className="h-9 gap-1.5"
+              onClick={() => setCreating(true)}
+            >
+              <Plus className="h-4 w-4" />
+              Add order
+            </Button>
           </div>
 
           <OrdersToolbar
@@ -289,6 +302,8 @@ export const OrdersManager = () => {
           />
         </CardContent>
       </Card>
+
+      <OrderCreateSheet open={creating} onClose={() => setCreating(false)} />
 
       <OrderEditSheet orderId={editingId} onClose={() => setEditingId(null)} />
 
