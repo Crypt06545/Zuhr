@@ -9,9 +9,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/format";
-import type { Product } from "@/lib/mock-products";
 import { getStockState, StockBadge } from "./ProductStatusBadge";
 import { RowActions } from "./RowActions";
+
+// The row shape the table shows (built from the backend product in ProductsManager).
+export interface Product {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  stock: number;
+}
 
 interface ProductsTableProps {
   products: Product[];

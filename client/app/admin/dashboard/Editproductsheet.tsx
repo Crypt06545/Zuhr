@@ -11,15 +11,16 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { getErrorMessage } from "@/hooks/use-auth";
-
-import type { Product } from "@/lib/mock-products";
-import { AddProductForm } from "./AddProductForm";
 import { getAdminProductApi } from "@/lib/api/Products.api";
+
+import { AddProductForm } from "./AddProductForm";
+import type { Product } from "./ProductsTable";
 
 interface EditProductSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  product: Product | null; // the clicked table row (only its id is used)
+  // The clicked table row (only its id is used).
+  product: Pick<Product, "id"> | null;
 }
 
 export const EditProductSheet = ({
@@ -76,7 +77,7 @@ export const EditProductSheet = ({
             ))}
           </div>
         ) : (
-          // The form starts with this data, so it mounts only once it has arrived
+          // The form starts with this data, so it mounts only once it has arrived.
           <AddProductForm
             key={data._id}
             product={data}

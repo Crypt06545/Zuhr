@@ -3,19 +3,32 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   deleteOrderApi,
-  fetchAdminOrder,
-  fetchAdminOrders,
-  fetchOrderSummary,
+  getAdminOrderApi,
+  getAdminOrdersApi,
+  getAdminOrderSummaryApi,
   updateOrderApi,
   updateOrderStatusApi,
-  type AdminOrder,
-  type AdminOrdersQuery,
-  type OrderStatus,
-  type PaymentMethod,
-  type PaymentStatus,
+  type AdminOrderRow,
+  type AdminOrdersFilters,
+  type AdminOrderStatus,
+  type AdminPaymentMethod,
+  type AdminPaymentStatus,
   type UpdateOrderBody,
-  type UpdateOrderStatusBody,
 } from "@/lib/api/admin-orders.api";
+
+/* ============================================================
+   Types
+   ============================================================ */
+
+export type AdminOrdersQuery = AdminOrdersFilters & {
+  limit?: number;
+  cursor?: string;
+};
+
+export type UpdateOrderStatusBody = {
+  status: AdminOrderStatus;
+  note?: string;
+};
 
 /* ============================================================
    Query keys
@@ -35,21 +48,21 @@ export const adminOrderKeys = {
 export const useAdminOrders = (params: AdminOrdersQuery) =>
   useQuery({
     queryKey: adminOrderKeys.list(params),
-    queryFn: () => fetchAdminOrders(params),
+    queryFn: () => getAdminOrdersApi(params),
     placeholderData: (prev) => prev,
   });
 
 export const useAdminOrder = (id: string, enabled = true) =>
   useQuery({
     queryKey: adminOrderKeys.detail(id),
-    queryFn: () => fetchAdminOrder(id),
+    queryFn: () => getAdminOrderApi(id),
     enabled: enabled && !!id,
   });
 
 export const useOrderSummary = () =>
   useQuery({
     queryKey: adminOrderKeys.summary(),
-    queryFn: fetchOrderSummary,
+    queryFn: getAdminOrderSummaryApi,
   });
 
 /* ============================================================
@@ -64,7 +77,7 @@ export const useUpdateOrderStatus = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateOrderStatusBody }) =>
-      updateOrderStatusApi(id, body),
+      updateOrderStatusApi(id, body.status, body.note),
     onSuccess: () => invalidateAll(qc),
   });
 };
@@ -102,19 +115,19 @@ export interface OrderRow {
   product: string;
   quantity: number;
   amount: number;
-  status: OrderStatus;
-  paymentMethod: PaymentMethod;
-  paymentStatus: PaymentStatus;
+  status: AdminOrderStatus;
+  paymentMethod: AdminPaymentMethod;
+  paymentStatus: AdminPaymentStatus;
   note: string;
   date: string; // createdAt
-  raw: AdminOrder; // form-এর জন্য
+  raw: AdminOrderRow; // form-এর জন্য
 }
 
-export const toOrderRow = (o: AdminOrder): OrderRow => ({
+export const toOrderRow = (o: AdminOrderRow): OrderRow => ({
   id: o.orderNumber,
   _id: o._id,
   customer: o.shippingAddress.fullName,
-  email: "",
+  email: o.customer.email ?? "",
   phone: o.shippingAddress.phone,
   address: o.shippingAddress.addressLine,
   city: o.shippingAddress.city,
@@ -123,7 +136,7 @@ export const toOrderRow = (o: AdminOrder): OrderRow => ({
     o.items.length === 1
       ? o.items[0]!.name
       : `${o.items[0]?.name ?? ""} +${o.items.length - 1} more`,
-  quantity: o.items.reduce((s, i) => s + i.quantity, 0),
+  quantity: o.items.reduce((sum, item) => sum + item.quantity, 0),
   amount: o.total,
   status: o.status,
   paymentMethod: o.paymentMethod,

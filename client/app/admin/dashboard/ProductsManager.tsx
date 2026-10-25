@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
 
+import { PaginationBar } from "@/components/common/Paginationbar";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,46 +16,43 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getErrorMessage } from "@/hooks/use-auth";
-
-import type { Product } from "@/lib/mock-products";
-import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
-import { PaginationBar } from "@/components/common/Paginationbar";
-import { EditProductSheet } from "./Editproductsheet";
-import { STOCK_STATE_META, type StockState } from "./ProductStatusBadge";
-import { ProductsTable } from "./ProductsTable";
 import {
   useCursorPagination,
   useDebouncedValue,
 } from "@/hooks/Usecursorpagination";
+import { getCategoriesApi } from "@/lib/api/Categories.api";
 import {
   AdminProduct,
   AdminProductsFilters,
   deleteProductApi,
   getAdminProductsApi,
 } from "@/lib/api/Products.api";
-import { getCategoriesApi } from "@/lib/api/Categories.api";
+
+import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
+import { EditProductSheet } from "./Editproductsheet";
+import { STOCK_STATE_META, type StockState } from "./ProductStatusBadge";
+import { ProductsTable, type Product } from "./ProductsTable";
 
 type Filter = "all" | StockState;
 
 const FILTERS: Filter[] = ["all", "in_stock", "low_stock", "out_of_stock"];
 const PRODUCTS_KEY = ["admin-products"];
 
-// Turns a backend product into the row shape the table already uses.
+// Turns a backend product into the row shape the table uses.
 // The list sends only the category id, so the name comes from the categories list.
 const toProduct = (
   p: AdminProduct,
   categoryNames: Map<string, string>,
-): Product =>
-  ({
-    id: p._id,
-    name: p.name,
-    category:
-      typeof p.category === "object"
-        ? p.category.name
-        : (categoryNames.get(p.category) ?? "—"),
-    price: p.variants.length ? Math.min(...p.variants.map((v) => v.price)) : 0,
-    stock: p.totalStock,
-  }) as Product;
+): Product => ({
+  id: p._id,
+  name: p.name,
+  category:
+    typeof p.category === "object"
+      ? p.category.name
+      : (categoryNames.get(p.category) ?? "—"),
+  price: p.variants.length ? Math.min(...p.variants.map((v) => v.price)) : 0,
+  stock: p.totalStock,
+});
 
 export const ProductsManager = () => {
   const queryClient = useQueryClient();
