@@ -14,6 +14,7 @@ import { CloudinaryModule } from './common/cloudinary/cloudinary.module.js';
 import { ProductsModule } from './products/products.module.js';
 import { RedisModule } from './common/redis/redis.module.js';
 import { OrdersModule } from './orders/orders.module.js';
+import { TelegramModule } from './telegram/telegram.module.js';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { OrdersModule } from './orders/orders.module.js';
     CloudinaryModule,
     ProductsModule,
     OrdersModule,
+    TelegramModule,
   ],
   controllers: [AppController],
   providers: [AppService],

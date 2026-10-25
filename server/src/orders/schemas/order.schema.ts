@@ -26,6 +26,13 @@ export enum PaymentMethod {
   CARD = 'card',
 }
 
+// Where the order came from: the customer's own checkout, or an admin who
+// entered it for a customer (phone / social media orders)
+export enum OrderSource {
+  WEB = 'web',
+  ADMIN = 'admin',
+}
+
 // A copy of the product line at the moment of ordering. Prices and names never
 // change afterwards, even if the product is edited or deleted.
 @Schema({ _id: false })
@@ -76,8 +83,9 @@ export class OrderCustomer {
   @Prop({ required: true, trim: true })
   phone!: string;
 
-  @Prop({ required: true, trim: true, lowercase: true })
-  email!: string;
+  // Optional: a customer who orders by phone may have no email
+  @Prop({ type: String, trim: true, lowercase: true })
+  email?: string;
 }
 export const OrderCustomerSchema = SchemaFactory.createForClass(OrderCustomer);
 
@@ -128,8 +136,21 @@ export class Order {
   @Prop({ required: true, unique: true, uppercase: true, trim: true })
   orderNumber!: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
-  user!: Types.ObjectId;
+  // The customer's account. Empty for orders an admin entered for a customer
+  // who has no account.
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  user?: Types.ObjectId;
+
+  @Prop({
+    type: String,
+    enum: Object.values(OrderSource),
+    default: OrderSource.WEB,
+  })
+  source!: OrderSource;
+
+  // The admin who entered the order (only when source is "admin")
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  placedBy?: Types.ObjectId;
 
   @Prop({ type: OrderCustomerSchema, required: true })
   customer!: OrderCustomer;

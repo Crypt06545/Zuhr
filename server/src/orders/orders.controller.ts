@@ -24,6 +24,7 @@ import { JwtAccessGuard } from '../auth/guards/jwt-access.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { ObjectIdParamDto } from '../products/dto/object-id-param.dto.js';
 import { UserType } from '../users/schemas/user.schema.js';
+import { CreateAdminOrderDto } from './dto/create-admin-order.dto.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto.js';
@@ -42,6 +43,14 @@ type AuthUser = { userId: string; email: string };
 const AdminOnly = () =>
   applyDecorators(UseGuards(JwtAccessGuard, RolesGuard), Roles(UserType.ADMIN));
 
+const assertIdempotencyKey = (key?: string) => {
+  if (key && !IDEMPOTENCY_KEY_PATTERN.test(key)) {
+    throw new BadRequestException(
+      'Idempotency-Key must be 8-64 characters: letters, numbers, - and _',
+    );
+  }
+};
+
 @Controller('orders')
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
@@ -58,11 +67,7 @@ export class OrdersController {
     @Body() dto: CreateOrderDto,
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    if (idempotencyKey && !IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
-      throw new BadRequestException(
-        'Idempotency-Key must be 8-64 characters: letters, numbers, - and _',
-      );
-    }
+    assertIdempotencyKey(idempotencyKey);
 
     return this.ordersService.create(req.user as AuthUser, dto, idempotencyKey);
   }
@@ -87,6 +92,24 @@ export class OrdersController {
 
   // ───────── Admin ─────────
   // Static routes ('admin/...') stay above ':id'.
+
+  // An admin enters an order on behalf of a customer (phone / social media)
+  @AdminOnly()
+  @Post('admin')
+  @HttpCode(HttpStatus.CREATED)
+  createByAdmin(
+    @Req() req: Request,
+    @Body() dto: CreateAdminOrderDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    assertIdempotencyKey(idempotencyKey);
+
+    return this.ordersService.createByAdmin(
+      req.user as AuthUser,
+      dto,
+      idempotencyKey,
+    );
+  }
 
   @AdminOnly()
   @Get('admin/list')

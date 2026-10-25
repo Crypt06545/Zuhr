@@ -34,6 +34,7 @@ import {
   Order,
   type OrderDocument,
   type OrderItem,
+  OrderSource,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
@@ -51,6 +52,7 @@ import {
   AdminQueryOrdersDto,
   QueryMyOrdersDto,
 } from './dto/query-orders.dto.js';
+import type { CreateAdminOrderDto } from './dto/create-admin-order.dto.js';
 import {
   ADMIN_CANCELLABLE,
   CUSTOMER_CANCELLABLE,
@@ -60,7 +62,7 @@ import {
   statusesThatCanMoveTo,
 } from './orders.rules.js';
 import { UpdateOrderDto } from './dto/update-order.dto.js';
-
+import { TelegramService } from '../telegram/telegram.service.js';
 type OrderLean = Order & {
   _id: Types.ObjectId;
   createdAt: Date;
@@ -156,6 +158,7 @@ export class OrdersService {
     @InjectConnection() private readonly connection: Connection,
     private readonly products: ProductsService,
     private readonly redis: RedisService,
+    private readonly telegram: TelegramService,
   ) {}
 
   // ───────────────────────── Customer ─────────────────────────
@@ -181,8 +184,11 @@ export class OrdersService {
     const requested = this.mergeLines(dto.items);
     const lines = await this.products.resolveCheckoutItems(requested);
     const items = lines.map((line) => this.toOrderItem(line));
-    const totals = this.computeTotals(items, getShippingFee(), 0);
-
+    const totals = this.computeTotals(
+      items,
+      getShippingFee(dto.shippingAddress.district),
+      0,
+    );
     const paymentMethod = dto.paymentMethod ?? PaymentMethod.COD;
     const isMobilePayment =
       paymentMethod === PaymentMethod.BKASH ||
@@ -244,6 +250,10 @@ export class OrdersService {
         // Only after the commit: cache invalidation must never run for a rolled-back order
         await this.products.afterStockChanged(stockResults);
         await this.bumpSummary();
+
+        // Fire and forget: the customer never waits for Telegram, and a failure
+        // there cannot undo the order (the service catches and logs its own errors)
+        void this.telegram.notifyNewOrder(order);
 
         return this.forCustomer(order);
       } catch (error) {
@@ -309,6 +319,178 @@ export class OrdersService {
     return this.forCustomer(order);
   }
 
+  // ───────────────────────── Admin: place an order for a customer ─────────────────────────
+
+  /**
+   * An admin enters an order for a customer (phone / social media).
+   * Same rules as checkout: prices and stock come from the database and the
+   * stock is taken in the same transaction. The order remembers which admin
+   * placed it (`placedBy`) and the customer's details are typed in by the admin.
+   */
+  async createByAdmin(
+    admin: { userId: string; email: string },
+    dto: CreateAdminOrderDto,
+    idempotencyKey?: string,
+  ) {
+    const adminId = new Types.ObjectId(admin.userId);
+
+    // The same request sent again returns the order that was already created
+    if (idempotencyKey) {
+      const existing = await this.findAdminOrderByKey(adminId, idempotencyKey);
+      if (existing) return existing;
+    }
+
+    const requested = this.mergeLines(dto.items);
+    const lines = await this.products.resolveCheckoutItems(requested);
+    const items = lines.map((line) => this.toOrderItem(line));
+
+    const shippingFee =
+      dto.shippingFee ?? getShippingFee(dto.shippingAddress.district);
+    const totals = this.computeTotals(items, shippingFee, 0);
+
+    const paymentMethod = dto.paymentMethod ?? PaymentMethod.COD;
+    const isMobilePayment =
+      paymentMethod === PaymentMethod.BKASH ||
+      paymentMethod === PaymentMethod.NAGAD;
+
+    // Advance or full payment already received
+    const paid = dto.paidAmount ?? 0;
+
+    if (toCents(paid) > toCents(totals.total)) {
+      throw new BadRequestException(
+        'The received amount cannot be more than the order total',
+      );
+    }
+
+    const paymentStatus = derivePaymentStatus(paid, totals.total);
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const orderNumber = this.generateOrderNumber();
+
+      try {
+        let stockResults: StockChangeResult[] = [];
+
+        const order = await this.connection.transaction(async (session) => {
+          stockResults = [];
+
+          for (const item of items) {
+            stockResults.push(
+              await this.products.applyStockChange(
+                String(item.product),
+                String(item.variant),
+                { type: StockUpdateType.ADJUST, quantity: -item.quantity },
+                session,
+              ),
+            );
+          }
+
+          const now = new Date();
+          const timeline: TimelineInput[] = [
+            { event: 'created', at: now, by: adminId, note: 'Placed by admin' },
+          ];
+
+          if (toCents(paid) > 0) {
+            timeline.push({
+              event:
+                paymentStatus === PaymentStatus.PAID
+                  ? 'payment:paid'
+                  : 'payment:advance',
+              at: now,
+              by: adminId,
+              note: `Received ${paid} BDT (${paid} of ${totals.total} BDT)`,
+            });
+          }
+
+          const [created] = await this.orderModel.create(
+            [
+              {
+                orderNumber,
+                source: OrderSource.ADMIN,
+                placedBy: adminId,
+                customer: {
+                  name: dto.shippingAddress.fullName,
+                  phone: dto.shippingAddress.phone,
+                  ...(dto.customerEmail ? { email: dto.customerEmail } : {}),
+                },
+                shippingAddress: dto.shippingAddress,
+                items,
+                ...totals,
+                paymentMethod,
+                paymentStatus,
+                paidAmount: paid,
+                ...(isMobilePayment
+                  ? {
+                      paymentTransactionId: dto.paymentTransactionId,
+                      paymentSenderPhone: dto.paymentSenderPhone,
+                    }
+                  : {}),
+                adminNote: dto.adminNote,
+                idempotencyKey,
+                timeline,
+              },
+            ],
+            { session },
+          );
+
+          return created!.toObject() as unknown as OrderLean;
+        });
+
+        await this.products.afterStockChanged(stockResults);
+        await this.bumpSummary();
+
+        // Fire and forget, with the admin's name so the message says who placed it
+        void this.adminName(adminId).then((name) =>
+          this.telegram.notifyNewOrder(order, name),
+        );
+
+        return order;
+      } catch (error) {
+        if (isDuplicateKey(error, 'orderNumber')) continue;
+
+        if (isDuplicateKey(error, 'paymentTransactionId')) {
+          throw new ConflictException(
+            'This transaction ID has already been used',
+          );
+        }
+
+        if (idempotencyKey && isDuplicateKey(error, 'idempotencyKey')) {
+          const winner = await this.findAdminOrderByKey(
+            adminId,
+            idempotencyKey,
+          );
+          if (winner) return winner;
+        }
+
+        throw error;
+      }
+    }
+
+    throw new ConflictException('Could not create the order, please try again');
+  }
+
+  private findAdminOrderByKey(adminId: Types.ObjectId, key: string) {
+    return this.orderModel
+      .findOne({ placedBy: adminId, idempotencyKey: key })
+      .lean<OrderLean>()
+      .exec();
+  }
+
+  // Only used for the Telegram message; a missing name is not an error
+  private async adminName(id: Types.ObjectId): Promise<string | undefined> {
+    try {
+      const user = await this.connection
+        .model('User')
+        .findById(id)
+        .select('name')
+        .lean<{ name?: string }>()
+        .exec();
+
+      return user?.name;
+    } catch {
+      return undefined;
+    }
+  }
+
   // ───────────────────────── Admin: read ─────────────────────────
 
   findAllAdmin(query: AdminQueryOrdersDto): Promise<OrderListResult> {
@@ -340,11 +522,13 @@ export class OrdersService {
   }
 
   async findOneAdmin(id: string): Promise<OrderLean> {
-    // Only the name of whoever did each timeline step is loaded, nothing else
-    // from the user (no email, no password hash)
+    // Only names are loaded (no email, no password hash)
     const order = await this.orderModel
       .findById(id)
-      .populate({ path: 'timeline.by', model: 'User', select: 'name' })
+      .populate([
+        { path: 'timeline.by', model: 'User', select: 'name' },
+        { path: 'placedBy', model: 'User', select: 'name' },
+      ])
       .lean<OrderLean>()
       .exec();
 
@@ -352,7 +536,6 @@ export class OrdersService {
 
     return order;
   }
-
   // Counts per status for the dashboard cards. Cached for a few seconds, so
   // many admins refreshing the page cost one query, not one each.
   async getSummary(): Promise<OrderSummary> {
