@@ -1,8 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowRight, Search } from "lucide-react";
 
+import { buttonVariants } from "@/components/ui/button"; // asChild এর বদলে এটি ব্যবহার করব
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -12,45 +15,77 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import type { Order, OrderStatus } from "@/lib/mock-dashboard";
+import { cn } from "@/lib/utils"; // ক্লাস মার্জ করার জন্য
+import { useDebouncedValue } from "@/hooks/Usecursorpagination";
+import {
+  getAdminOrdersApi,
+  type AdminOrdersFilters,
+  type AdminOrderStatus,
+} from "@/lib/api/admin-orders.api";
+import { toDashboardOrder } from "@/lib/adapters/admin-order";
 import { STATUS_META } from "./OrderStatusBadge";
 import { OrdersTable } from "./OrdersTable";
 
-type Filter = "all" | OrderStatus;
+type Filter = "all" | AdminOrderStatus;
 
 const FILTERS: Filter[] = [
   "all",
-  "delivered",
-  "shipped",
+  "pending",
   "processing",
+  "shipped",
+  "delivered",
   "cancelled",
 ];
 
-export const OrdersSection = ({ orders }: { orders: Order[] }) => {
+// Dashboard-এ শুধু লেটেস্ট ১০টা দেখাবে
+const RECENT_LIMIT = 10;
+
+export const OrdersSection = () => {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const debounced = useDebouncedValue(query, 400);
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return orders.filter((o) => {
-      const matchesStatus = filter === "all" || o.status === filter;
-      const matchesQuery =
-        !q ||
-        o.customer.toLowerCase().includes(q) ||
-        o.product.toLowerCase().includes(q) ||
-        o.id.toLowerCase().includes(q);
-      return matchesStatus && matchesQuery;
-    });
-  }, [orders, query, filter]);
+  const filters = useMemo<AdminOrdersFilters>(
+    () => ({
+      ...(filter !== "all" ? { status: filter } : {}),
+      ...(debounced.trim() ? { search: debounced.trim() } : {}),
+    }),
+    [filter, debounced],
+  );
+
+  const { data, isPending, isFetching } = useQuery({
+    queryKey: ["admin", "orders", "recent", filters],
+    queryFn: () => getAdminOrdersApi({ ...filters, limit: RECENT_LIMIT }),
+    placeholderData: (prev) => prev,
+    staleTime: 30_000,
+  });
+
+  const rows = (data?.items ?? []).map(toDashboardOrder);
 
   return (
     <Card className="lg:col-span-2">
       <CardHeader className="gap-4">
-        <div>
-          <CardTitle>Recent orders</CardTitle>
-          <CardDescription>
-            Showing {visible.length} of {orders.length} orders
-          </CardDescription>
+        <div className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>Recent orders</CardTitle>
+            <CardDescription>
+              {isPending
+                ? "Loading..."
+                : `Showing up to ${RECENT_LIMIT} latest orders`}
+            </CardDescription>
+          </div>
+
+          {/* এখানে asChild এর বদলে Link এর উপর buttonVariants বসানো হয়েছে */}
+          <Link
+            href="/admin/dashboard/orders"
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "gap-1",
+            )}
+          >
+            View all
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -81,7 +116,7 @@ export const OrdersSection = ({ orders }: { orders: Order[] }) => {
       </CardHeader>
 
       <CardContent>
-        <OrdersTable orders={visible} />
+        <OrdersTable orders={rows} isLoading={isPending || isFetching} />
       </CardContent>
     </Card>
   );

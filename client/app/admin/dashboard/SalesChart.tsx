@@ -25,9 +25,8 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { getDailyStats } from "@/lib/dashboard-stats";
+import type { AnalyticsDailyPoint } from "@/lib/api/admin-analytics.api";
 import { formatCurrency, formatDate } from "@/lib/format";
-import type { Order } from "@/lib/mock-dashboard";
 
 type Metric = "revenue" | "orders";
 type Variant = "area" | "bar";
@@ -69,11 +68,15 @@ function Toggle<T extends string>({
   );
 }
 
-export const SalesChart = ({ orders }: { orders: Order[] }) => {
+interface SalesChartProps {
+  daily: AnalyticsDailyPoint[];
+  isLoading?: boolean;
+}
+
+export const SalesChart = ({ daily, isLoading }: SalesChartProps) => {
   const [metric, setMetric] = useState<Metric>("revenue");
   const [variant, setVariant] = useState<Variant>("area");
 
-  const data = getDailyStats(orders);
   const color = `var(--color-${metric})`;
 
   const tooltip = (
@@ -141,14 +144,18 @@ export const SalesChart = ({ orders }: { orders: Order[] }) => {
       </CardHeader>
 
       <CardContent>
-        {data.length === 0 ? (
+        {isLoading ? (
+          <p className="py-16 text-center text-sm text-muted-foreground">
+            Loading...
+          </p>
+        ) : daily.length === 0 ? (
           <p className="py-16 text-center text-sm text-muted-foreground">
             No data yet.
           </p>
         ) : (
           <ChartContainer config={config} className="h-[280px] w-full">
             {variant === "area" ? (
-              <AreaChart data={data} margin={{ left: 4, right: 12, top: 8 }}>
+              <AreaChart data={daily} margin={{ left: 4, right: 12, top: 8 }}>
                 {axes}
                 <Area
                   dataKey={metric}
@@ -160,7 +167,7 @@ export const SalesChart = ({ orders }: { orders: Order[] }) => {
                 />
               </AreaChart>
             ) : (
-              <BarChart data={data} margin={{ left: 4, right: 12, top: 8 }}>
+              <BarChart data={daily} margin={{ left: 4, right: 12, top: 8 }}>
                 {axes}
                 <Bar dataKey={metric} fill={color} radius={[4, 4, 0, 0]} />
               </BarChart>

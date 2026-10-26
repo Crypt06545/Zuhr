@@ -15,11 +15,12 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { getStatusStats, STATUSES } from "@/lib/dashboard-stats";
-import type { Order } from "@/lib/mock-dashboard";
+import type { OrderSummaryCounts } from "@/lib/api/admin-orders.api";
+import { DASHBOARD_STATUSES } from "@/lib/adapters/admin-order";
 import { STATUS_META } from "./OrderStatusBadge";
 
 const config = {
+  pending: { label: STATUS_META.pending.label, color: "var(--chart-5)" },
   delivered: { label: STATUS_META.delivered.label, color: "var(--chart-1)" },
   shipped: { label: STATUS_META.shipped.label, color: "var(--chart-2)" },
   processing: { label: STATUS_META.processing.label, color: "var(--chart-4)" },
@@ -29,19 +30,38 @@ const config = {
   },
 } satisfies ChartConfig;
 
-export const StatusPieChart = ({ orders }: { orders: Order[] }) => {
-  const stats = getStatusStats(orders);
-  const data = stats.map((s) => ({ ...s, fill: `var(--color-${s.status})` }));
-  const total = orders.length;
+interface StatusPieChartProps {
+  statuses?: OrderSummaryCounts;
+  isLoading?: boolean;
+}
+
+export const StatusPieChart = ({
+  statuses,
+  isLoading,
+}: StatusPieChartProps) => {
+  const total = statuses?.total ?? 0;
+  const data = statuses
+    ? DASHBOARD_STATUSES.map((status) => ({
+        status,
+        count: statuses[status],
+        fill: `var(--color-${status})`,
+      })).filter((s) => s.count > 0)
+    : [];
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Order status</CardTitle>
-        <CardDescription>{total} orders in total</CardDescription>
+        <CardDescription>
+          {isLoading ? "Loading..." : `${total} orders in total`}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {data.length === 0 ? (
+        {isLoading ? (
+          <p className="py-16 text-center text-sm text-muted-foreground">
+            Loading...
+          </p>
+        ) : data.length === 0 ? (
           <p className="py-16 text-center text-sm text-muted-foreground">
             No data yet.
           </p>
@@ -98,7 +118,7 @@ export const StatusPieChart = ({ orders }: { orders: Order[] }) => {
         )}
 
         <ul className="grid grid-cols-2 gap-x-4 gap-y-2">
-          {STATUSES.map((status) => (
+          {DASHBOARD_STATUSES.map((status) => (
             <li key={status} className="flex items-center gap-2 text-sm">
               <span
                 className="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -108,7 +128,7 @@ export const StatusPieChart = ({ orders }: { orders: Order[] }) => {
                 {config[status].label}
               </span>
               <span className="ml-auto font-medium tabular-nums">
-                {orders.filter((o) => o.status === status).length}
+                {statuses?.[status] ?? 0}
               </span>
             </li>
           ))}

@@ -7,8 +7,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { DashboardOrder } from "@/lib/adapters/admin-order";
 import { formatCurrency, formatDate } from "@/lib/format";
-import type { Order } from "@/lib/mock-dashboard";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 
 const initials = (name: string) =>
@@ -19,7 +19,12 @@ const initials = (name: string) =>
     .join("")
     .toUpperCase();
 
-export const OrdersTable = ({ orders }: { orders: Order[] }) => (
+interface OrdersTableProps {
+  orders: DashboardOrder[];
+  isLoading?: boolean;
+}
+
+export const OrdersTable = ({ orders, isLoading }: OrdersTableProps) => (
   <Table>
     <TableHeader>
       <TableRow>
@@ -31,7 +36,16 @@ export const OrdersTable = ({ orders }: { orders: Order[] }) => (
       </TableRow>
     </TableHeader>
     <TableBody>
-      {orders.length === 0 ? (
+      {isLoading ? (
+        <TableRow>
+          <TableCell
+            colSpan={5}
+            className="h-24 text-center text-muted-foreground"
+          >
+            Loading...
+          </TableCell>
+        </TableRow>
+      ) : orders.length === 0 ? (
         <TableRow>
           <TableCell
             colSpan={5}
@@ -42,7 +56,7 @@ export const OrdersTable = ({ orders }: { orders: Order[] }) => (
         </TableRow>
       ) : (
         orders.map((order) => (
-          <TableRow key={order.id}>
+          <TableRow key={order.orderId}>
             <TableCell>
               <div className="flex items-center gap-3">
                 <Avatar className="h-8 w-8">
