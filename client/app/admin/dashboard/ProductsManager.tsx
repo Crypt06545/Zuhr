@@ -52,6 +52,7 @@ const toProduct = (
       : (categoryNames.get(p.category) ?? "—"),
   price: p.variants.length ? Math.min(...p.variants.map((v) => v.price)) : 0,
   stock: p.totalStock,
+  image: p.images?.[0]?.url, // এখন আর এরর দেবে না
 });
 
 export const ProductsManager = () => {

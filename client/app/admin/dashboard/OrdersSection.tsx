@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Search } from "lucide-react";
 
-import { buttonVariants } from "@/components/ui/button"; // asChild এর বদলে এটি ব্যবহার করব
+import { buttonVariants } from "@/components/ui/button";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,7 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils"; // ক্লাস মার্জ করার জন্য
+import { cn } from "@/lib/utils";
 import { useDebouncedValue } from "@/hooks/Usecursorpagination";
 import {
   getAdminOrdersApi,
@@ -37,10 +37,14 @@ const FILTERS: Filter[] = [
   "cancelled",
 ];
 
-// Dashboard-এ শুধু লেটেস্ট ১০টা দেখাবে
 const RECENT_LIMIT = 10;
 
-export const OrdersSection = () => {
+// Dashboard থেকে dateRange নেওয়া হচ্ছে
+interface OrdersSectionProps {
+  dateRange?: { from?: string; to?: string };
+}
+
+export const OrdersSection = ({ dateRange }: OrdersSectionProps) => {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const debounced = useDebouncedValue(query, 400);
@@ -49,8 +53,10 @@ export const OrdersSection = () => {
     () => ({
       ...(filter !== "all" ? { status: filter } : {}),
       ...(debounced.trim() ? { search: debounced.trim() } : {}),
+      ...(dateRange?.from ? { dateFrom: dateRange.from } : {}),
+      ...(dateRange?.to ? { dateTo: dateRange.to } : {}),
     }),
-    [filter, debounced],
+    [filter, debounced, dateRange],
   );
 
   const { data, isPending, isFetching } = useQuery({
@@ -71,11 +77,10 @@ export const OrdersSection = () => {
             <CardDescription>
               {isPending
                 ? "Loading..."
-                : `Showing up to ${RECENT_LIMIT} latest orders`}
+                : `Showing up to ${RECENT_LIMIT} orders for selected date`}
             </CardDescription>
           </div>
 
-          {/* এখানে asChild এর বদলে Link এর উপর buttonVariants বসানো হয়েছে */}
           <Link
             href="/admin/dashboard/orders"
             className={cn(

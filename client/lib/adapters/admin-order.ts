@@ -16,9 +16,16 @@ export interface DashboardOrder {
 
 const productLabel = (items: AdminOrderItem[]): string => {
   if (!items.length) return "—";
+
   const first = items[0];
   const base = [first.name, first.size].filter(Boolean).join(" ");
-  return items.length === 1 ? base : `${base} +${items.length - 1}`;
+
+  // কোয়ান্টিটি ১ এর বেশি হলে সেটা দেখাবে
+  const qty = first.quantity > 1 ? ` (x${first.quantity})` : "";
+
+  return items.length === 1
+    ? `${base}${qty}`
+    : `${base}${qty} +${items.length - 1} more`;
 };
 
 export const toDashboardOrder = (row: AdminOrderRow): DashboardOrder => ({

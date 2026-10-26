@@ -1,4 +1,5 @@
 import { Package } from "lucide-react";
+import Image from "next/image"; // Next.js Image ব্যবহার করলে এটি রাখুন, নাহলে সাধারণ img দিয়েও করতে পারেন
 
 import {
   Table,
@@ -12,13 +13,14 @@ import { formatCurrency } from "@/lib/format";
 import { getStockState, StockBadge } from "./ProductStatusBadge";
 import { RowActions } from "./RowActions";
 
-// The row shape the table shows (built from the backend product in ProductsManager).
+// The row shape the table shows
 export interface Product {
   id: string;
   name: string;
   category: string;
   price: number;
   stock: number;
+  image?: string; // <-- image যুক্ত করা হলো
 }
 
 interface ProductsTableProps {
@@ -60,9 +62,21 @@ export const ProductsTable = ({
           <TableRow key={product.id}>
             <TableCell>
               <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-accent-foreground">
-                  <Package className="h-[18px] w-[18px]" />
-                </span>
+                {/* ইমেজ থাকলে ইমেজ দেখাবে, না থাকলে আগের Package আইকন দেখাবে */}
+                {product.image ? (
+                  <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
+                    <img
+                      src={product.image}
+                      alt={product.name}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/15 text-accent-foreground">
+                    <Package className="h-5 w-5" />
+                  </span>
+                )}
+
                 <div className="min-w-0">
                   <p className="max-w-[9rem] truncate text-sm font-medium sm:max-w-none">
                     {product.name}
