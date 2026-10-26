@@ -62,6 +62,21 @@ export const SUMMARY_CACHE_TTL = 60; // seconds, a safety net: every change bump
 export const summaryCacheKey = (version: number) =>
   `orders:summary:v${version}`;
 
+/* ============================================================
+   ANALYTICS (dashboard charts)
+   ============================================================ */
+
+// How many days of data the dashboard loads when no range is given
+export const ANALYTICS_DEFAULT_DAYS = 30;
+
+// Top products shown in the bar chart
+export const ANALYTICS_TOP_PRODUCTS_LIMIT = 10;
+
+// Cache is keyed by version, so it is always safe to serve
+export const ANALYTICS_CACHE_TTL = 120; // seconds
+export const analyticsCacheKey = (version: number, from: string, to: string) =>
+  `orders:analytics:v${version}:${from}:${to}`;
+
 // Bangladesh mobile number, with or without +88 / 88
 export const BD_MOBILE_PATTERN = /^(?:\+?88)?01[3-9][0-9]{8}$/;
 

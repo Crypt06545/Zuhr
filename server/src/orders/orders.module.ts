@@ -9,6 +9,7 @@ import { UsersModule } from '../users/users.module.js';
 import { OrdersController } from './orders.controller.js';
 import { OrdersService } from './orders.service.js';
 import { Order, OrderSchema } from './schemas/order.schema.js';
+import { OrdersAnalyticsService } from './orders.analytics.service.js';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { Order, OrderSchema } from './schemas/order.schema.js';
     TelegramModule, // new-order notification
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, OrdersAnalyticsService],
   exports: [OrdersService],
 })
 export class OrdersModule {}

@@ -26,7 +26,8 @@ import { ObjectIdParamDto } from '../products/dto/object-id-param.dto.js';
 import { UserType } from '../users/schemas/user.schema.js';
 import { CreateAdminOrderDto } from './dto/create-admin-order.dto.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
-
+import { AnalyticsQueryDto } from './dto/analytics-query.dto.js';
+import { OrdersAnalyticsService } from './orders.analytics.service.js';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto.js';
 
 import { OrdersService } from './orders.service.js';
@@ -53,7 +54,17 @@ const assertIdempotencyKey = (key?: string) => {
 
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly analytics: OrdersAnalyticsService,
+  ) {}
+
+  // ↓ admin/list আর admin/summary-এর পরে, admin/:id-এর আগে
+  @AdminOnly()
+  @Get('admin/analytics')
+  getAnalytics(@Query() query: AnalyticsQueryDto) {
+    return this.analytics.getAnalytics(query.from, query.to);
+  }
 
   // ───────── Customer (signed in) ─────────
 

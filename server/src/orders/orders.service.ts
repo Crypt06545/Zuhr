@@ -984,6 +984,7 @@ export class OrdersService {
     });
 
     await this.products.afterStockChanged(stockResults);
+    await this.bumpSummary();
 
     return updated;
   }
