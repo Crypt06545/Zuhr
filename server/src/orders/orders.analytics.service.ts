@@ -1,3 +1,5 @@
+// src/orders/orders.analytics.service.ts
+
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -54,7 +56,6 @@ export class OrdersAnalyticsService {
     const { from, to } = this.resolveRange(fromInput, toInput);
 
     // ObjectId-এর প্রথম ৪ byte = creation time, তাই _id দিয়েই date filter
-    // → নতুন index লাগে না, existing `status + _id` index-ই কাজে লাগে
     const idFilter = {
       $gte: Types.ObjectId.createFromTime(Math.floor(from.getTime() / 1000)),
       $lt: Types.ObjectId.createFromTime(Math.floor(to.getTime() / 1000)),
@@ -113,8 +114,9 @@ export class OrdersAnalyticsService {
         { $limit: TOP_PRODUCTS_LIMIT },
       ]),
 
-      // ৩. Status breakdown (সব order — cancelled-ও বটে)
+      // ৩. Status breakdown (শুধু নির্দিষ্ট ডেট রেঞ্জের অর্ডার)
       this.orderModel.aggregate<{ _id: OrderStatus; count: number }>([
+        { $match: { _id: idFilter } }, // <--- এখানে ডেট ফিল্টার যোগ করা হয়েছে
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
     ]);

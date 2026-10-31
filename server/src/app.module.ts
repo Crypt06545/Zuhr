@@ -15,6 +15,8 @@ import { ProductsModule } from './products/products.module.js';
 import { RedisModule } from './common/redis/redis.module.js';
 import { OrdersModule } from './orders/orders.module.js';
 import { TelegramModule } from './telegram/telegram.module.js';
+import { ExpensesModule } from './expenses/expenses.module.js';
+import { FinanceModule } from './finance/finance.module.js';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { TelegramModule } from './telegram/telegram.module.js';
     ProductsModule,
     OrdersModule,
     TelegramModule,
+    ExpensesModule,
+    FinanceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

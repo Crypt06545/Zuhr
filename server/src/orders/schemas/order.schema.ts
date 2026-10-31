@@ -262,3 +262,5 @@ OrderSchema.index(
     partialFilterExpression: { paymentTransactionId: { $type: 'string' } },
   },
 );
+// Finance report: delivered orders in a date range (by delivery day)
+OrderSchema.index({ status: 1, deliveredAt: 1 });
