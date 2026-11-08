@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 
 import { OrdersSection } from "./OrdersSection";
 import { ProductsBarChart } from "./ProductsBarChart";
+import { ProfitSection } from "./ProfitSection";
 import { SalesChart } from "./SalesChart";
 import { StatsGrid } from "./StatsGrid";
 import { StatusPieChart } from "./StatusPieChart";
@@ -97,6 +98,8 @@ export const DashboardClient = () => {
         }
         isLoading={isLoading}
       />
+
+      <ProfitSection range={queryRange} />
 
       <SalesChart daily={data?.daily ?? []} isLoading={isLoading} />
 

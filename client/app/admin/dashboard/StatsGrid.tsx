@@ -23,9 +23,9 @@ export const StatsGrid = ({
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard
-        title="Revenue"
+        title="Order value"
         value={isLoading ? "—" : formatCurrency(revenue)}
-        hint="Excluding cancelled orders"
+        hint="All orders except cancelled"
         icon={Wallet}
       />
       <StatCard

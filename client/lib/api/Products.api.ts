@@ -72,6 +72,25 @@ export const fetchProducts = (
     signal,
   }).then((res) => res.data?.data ?? res.data);
 
+/* ---------- search bar suggestions ---------- */
+
+export type ProductSuggestion = {
+  _id: string;
+  name: string;
+  slug: string;
+  minPrice: number;
+  stockStatus: string;
+  image?: string;
+};
+
+export const fetchProductSuggestions = (
+  q: string,
+  signal?: AbortSignal,
+): Promise<ProductSuggestion[]> =>
+  API.get("/products/suggest", { params: { q }, signal }).then(
+    (res) => res.data?.data ?? res.data,
+  );
+
 /* ---------- helpers ---------- */
 
 export const isAbortError = (error: unknown) => axios.isCancel(error);
@@ -105,7 +124,6 @@ export type StockStatus = "in_stock" | "low_stock" | "out_of_stock";
 export type ProductStatus = "draft" | "active" | "archived";
 
 // One row of GET /products/admin/list
-
 export type AdminProduct = {
   _id: string;
   name: string;
@@ -114,6 +132,7 @@ export type AdminProduct = {
   variants: { price: number }[];
   totalStock: number;
 };
+
 // GET /products/admin/:id (the full product, used by the edit form)
 export type AdminProductDetail = {
   _id: string;
