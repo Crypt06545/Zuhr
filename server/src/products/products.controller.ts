@@ -26,6 +26,7 @@ import {
   AdminQueryProductsDto,
   QueryProductsDto,
 } from './dto/query-products.dto.js';
+import { SuggestProductsDto } from './dto/suggest-products.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
 import { UpdateStockDto } from './dto/update-stock.dto.js';
 import { MAX_PRODUCT_IMAGES } from './products.constants.js';
@@ -42,8 +43,13 @@ export class ProductsController {
     return this.productsService.findAll(query);
   }
 
-  // ───────── Admin only (401 token na thakle, 403 admin na hole) ─────────
-  // Static routes must stay above ':slug'.
+  // Search bar dropdown. Must stay above ':slug'
+  @Get('suggest')
+  suggest(@Query() query: SuggestProductsDto) {
+    return this.productsService.suggest(query.q);
+  }
+
+  // ───────── Admin only ─────────
 
   @UseGuards(JwtAccessGuard, RolesGuard)
   @Roles(UserType.ADMIN)
@@ -106,7 +112,7 @@ export class ProductsController {
     return this.productsService.remove(id);
   }
 
-  // ───────── Public (must stay last, otherwise 'admin/...' is read as a slug) ─────────
+  // ───────── Public (must stay last) ─────────
 
   @Get(':slug')
   findBySlug(@Param('slug') slug: string) {

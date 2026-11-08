@@ -49,8 +49,10 @@ import {
   QueryProductsDto,
 } from './dto/query-products.dto.js';
 import { computeStock } from './products.utils.js';
+
 import { UpdateProductDto } from './dto/update-product.dto.js';
 import { StockUpdateType, UpdateStockDto } from './dto/update-stock.dto.js';
+import { buildSearchTokens } from './search-tokens.util.js';
 
 type LeanVariant = ProductVariant & { _id: Types.ObjectId };
 
@@ -67,6 +69,15 @@ export interface ProductListResult {
   items: unknown[];
   nextCursor: string | null;
   hasMore: boolean;
+}
+
+export interface ProductSuggestion {
+  _id: Types.ObjectId;
+  name: string;
+  slug: string;
+  minPrice: number;
+  stockStatus: StockStatus;
+  image?: string;
 }
 
 export interface StockSummary {
@@ -120,6 +131,37 @@ export class ProductsService {
     return this.cache.list(this.hashQuery(query), () =>
       this.paginate(query, { status: ProductStatus.ACTIVE }, LIST_PROJECTION),
     );
+  }
+
+  // Search bar dropdown: matches the start of a word ("shi" -> "Blue Shirt").
+  // Uses the { status, searchTokens } index, returns at most 8 light results.
+  suggest(rawQuery: string): Promise<ProductSuggestion[]> {
+    const q = rawQuery.toLowerCase().trim();
+
+    if (q.length < 2 || q.length > 50) {
+      return Promise.resolve([]);
+    }
+
+    return this.cache.list(`suggest:${q}`, async () => {
+      const docs = await this.productModel
+        .find({
+          status: ProductStatus.ACTIVE,
+          searchTokens: { $elemMatch: { $gte: q, $lt: `${q}\uffff` } },
+        })
+        .select('name slug minPrice stockStatus images')
+        .limit(8)
+        .lean<ProductLean[]>()
+        .exec();
+
+      return docs.map((doc) => ({
+        _id: doc._id,
+        name: doc.name,
+        slug: doc.slug,
+        minPrice: doc.minPrice,
+        stockStatus: doc.stockStatus,
+        image: doc.images?.[0]?.url,
+      }));
+    });
   }
 
   findBySlug(rawSlug: string): Promise<ProductLean> {
@@ -206,13 +248,14 @@ export class ProductsService {
     try {
       const doc = await this.productModel.create({
         ...dto,
-        // FIX: category must be stored as an ObjectId, never as the string from the request
+        // category must be stored as an ObjectId, never as the string from the request
         category: new Types.ObjectId(dto.category),
         slug,
         images,
         variants,
         lowStockThreshold: threshold,
         minPrice: this.cheapestPrice(variants),
+        searchTokens: buildSearchTokens(dto.name, dto.brand),
         ...computeStock(variants, threshold),
       });
 
@@ -237,11 +280,12 @@ export class ProductsService {
   ) {
     const product = await this.productModel
       .findById(id)
-      .select('name slug images variants lowStockThreshold updatedAt')
+      .select('name brand slug images variants lowStockThreshold updatedAt')
       .lean<
         Pick<
           ProductLean,
           | 'name'
+          | 'brand'
           | 'slug'
           | 'images'
           | 'variants'
@@ -327,7 +371,7 @@ export class ProductsService {
 
     const changes = this.compact({
       ...fields,
-      // FIX: category must be stored as an ObjectId, never as the string from the request
+      // category must be stored as an ObjectId, never as the string from the request
       category: fields.category
         ? new Types.ObjectId(fields.category)
         : undefined,
@@ -348,6 +392,16 @@ export class ProductsService {
     // Cheapest variant price: price sorting reads this field
     if (variants !== undefined) {
       Object.assign(changes, { minPrice: this.cheapestPrice(variants) });
+    }
+
+    // Name or brand changed: rebuild the words the search bar matches on
+    if (fields.name !== undefined || fields.brand !== undefined) {
+      Object.assign(changes, {
+        searchTokens: buildSearchTokens(
+          fields.name ?? product.name,
+          fields.brand ?? product.brand,
+        ),
+      });
     }
 
     let updated: ProductLean | null;
@@ -475,7 +529,7 @@ export class ProductsService {
             },
           },
         ],
-        // FIX (Mongoose 9): an array update is a pipeline, so it must be opted in
+        // Mongoose 9: an array update is a pipeline, so it must be opted in
         // explicitly. `returnDocument: 'before'` is the modern name of `new: false`.
         { returnDocument: 'before', updatePipeline: true, session },
       )

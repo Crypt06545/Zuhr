@@ -97,6 +97,10 @@ export class Product {
   @Prop({ type: Number, min: 0, default: 0 })
   minPrice!: number;
 
+  // Search bar: name + brand-er prottek shobdo lowercase e ("Blue Shirt" -> ["blue","shirt"])
+  @Prop({ type: [String], default: [], select: false })
+  searchTokens!: string[];
+
   @Prop({ type: [String], default: [] })
   badges!: string[];
 
@@ -115,13 +119,16 @@ export type ProductDocument = HydratedDocument<Product>;
 
 export const ProductSchema = SchemaFactory.createForClass(Product);
 
-// Search ($text)
+// Full search ($text)
 ProductSchema.index({
   name: 'text',
   brand: 'text',
   shortDescription: 'text',
   tags: 'text',
 });
+
+// Search bar suggestion (prefix)
+ProductSchema.index({ status: 1, searchTokens: 1 });
 
 // SKU unique (create / update e conflict check er jonno)
 ProductSchema.index({ 'variants.sku': 1 }, { unique: true, sparse: true });
@@ -137,3 +144,6 @@ ProductSchema.index({ status: 1, minPrice: 1, _id: -1 });
 
 // Admin stock filter
 ProductSchema.index({ stockStatus: 1, _id: -1 });
+
+// Stock summary
+ProductSchema.index({ status: 1, stockStatus: 1 });
