@@ -1437,4 +1437,54 @@ export class OrdersService {
       hasMore,
     };
   }
+
+  // ───────────────────────── Public: track an order ─────────────────────────
+
+  /**
+   * Anyone with the order number can see where the order is. Only safe fields
+   * are returned: no name, phone, email, full address, cost price or notes.
+   */
+  async trackPublic(rawOrderNumber: string) {
+    const orderNumber = rawOrderNumber.trim().toUpperCase();
+
+    // A number that can never exist does not touch the database
+    if (!/^ORD-\d{6}-[0-9A-HJKMNP-TV-Z]{6}$/.test(orderNumber)) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const order = await this.orderModel
+      .findOne({ orderNumber })
+      .select(
+        'orderNumber status createdAt paymentMethod paymentStatus paidAmount ' +
+          'items.name items.size items.color items.quantity items.unitPrice ' +
+          'subtotal discountTotal shippingFee total ' +
+          'shippingAddress.city shippingAddress.district',
+      )
+      .lean<OrderLean>()
+      .exec();
+
+    if (!order) throw new NotFoundException('Order not found');
+
+    return {
+      orderNumber: order.orderNumber,
+      status: order.status,
+      createdAt: order.createdAt,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      paidAmount: receivedAmount(order),
+      items: order.items.map((item) => ({
+        name: item.name,
+        size: item.size,
+        color: item.color,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+      })),
+      subtotal: order.subtotal,
+      discountTotal: order.discountTotal,
+      shippingFee: order.shippingFee,
+      total: order.total,
+      city: order.shippingAddress?.city,
+      district: order.shippingAddress?.district,
+    };
+  }
 }

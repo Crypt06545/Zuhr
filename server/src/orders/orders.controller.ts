@@ -59,6 +59,13 @@ export class OrdersController {
     private readonly analytics: OrdersAnalyticsService,
   ) {}
 
+  // ───────── Public (no login): order tracking ─────────
+
+  @Get('track/:orderNumber')
+  track(@Param('orderNumber') orderNumber: string) {
+    return this.ordersService.trackPublic(orderNumber);
+  }
+
   // ↓ admin/list আর admin/summary-এর পরে, admin/:id-এর আগে
   @AdminOnly()
   @Get('admin/analytics')
