@@ -24,6 +24,7 @@ import { Disable2faDto } from './dto/disable-2fa.dto.js';
 
 import {
   MAX_ACTIVE_DEVICES,
+  REFRESH_ROTATION_GRACE_MS,
   REFRESH_TOKEN_TTL_MS,
   TRUSTED_DEVICE_TTL_MS,
 } from '../constants/auth.constants.js';
@@ -200,7 +201,7 @@ export class AuthService {
       session._id.toString(),
     );
 
-    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+    const refreshTokenHash = this.hashRefreshToken(refreshToken);
     await this.userService.replaceSessionToken(
       session._id.toString(),
       refreshTokenHash,
@@ -302,21 +303,36 @@ export class AuthService {
     userId: string,
     email: string,
     providedRefreshToken: string,
-  ) {
+  ): Promise<{ accessToken: string; refreshToken: string | null }> {
     const session = await this.userService.findSessionById(sessionId);
 
     if (!session || session.isRevoked || session.expiresAt < new Date()) {
       throw new UnauthorizedException('Session expired. Please login again.');
     }
 
-    const isTokenValid = await bcrypt.compare(
-      providedRefreshToken,
-      session.tokenHash,
-    );
+    // bcrypt na: bcrypt shudhu prothom 72 byte dhore, JWT er shuru ongsho shob
+    // token e same. tai purono token o match kore jeto. sha256 pura token dhore.
+    const providedHash = this.hashRefreshToken(providedRefreshToken);
 
-    if (!isTokenValid) {
+    const isCurrent = this.safeEqual(session.tokenHash, providedHash);
+
+    const isJustRotated =
+      !isCurrent &&
+      !!session.prevTokenValidUntil &&
+      session.prevTokenValidUntil > new Date() &&
+      this.safeEqual(session.prevTokenHash, providedHash);
+
+    if (!isCurrent && !isJustRotated) {
+      // Purono / vul / churi howa token: pura session bondho
       await this.userService.revokeSession(sessionId);
       throw new UnauthorizedException('Invalid session. Please login again.');
+    }
+
+    // Ek sathe duita request: ager ta already rotate koreche, browser er cookie te
+    // notun token ache. Amra shudhu access token dei, refresh token ar bodlai na.
+    if (isJustRotated) {
+      const accessToken = await this.signAccessToken(userId, email);
+      return { accessToken, refreshToken: null };
     }
 
     const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
@@ -327,12 +343,18 @@ export class AuthService {
       sessionId,
     );
 
-    const newHash = await bcrypt.hash(refreshToken, 10);
-    await this.userService.replaceSessionToken(
+    const rotated = await this.userService.rotateSessionToken(
       sessionId,
-      newHash,
+      session.tokenHash,
+      this.hashRefreshToken(refreshToken),
       refreshExpiresAt,
+      new Date(Date.now() + REFRESH_ROTATION_GRACE_MS),
     );
+
+    if (!rotated) {
+      // Parallel request amader age rotate kore felechhe
+      return { accessToken, refreshToken: null };
+    }
 
     return { accessToken, refreshToken };
   }
@@ -359,25 +381,45 @@ export class AuthService {
 
   // ─── Helpers ───
 
+  private async signAccessToken(userId: string, email: string) {
+    return this.jwtService.signAsync(
+      { sub: userId, email },
+      {
+        secret: process.env.JWT_ACCESS_SECRET,
+        expiresIn: (process.env.JWT_ACCESS_EXPIRES || '15m') as any,
+      },
+    );
+  }
+
   private async generateTokens(
     userId: string,
     email: string,
     sessionId: string,
   ) {
-    const accessPayload = { sub: userId, email };
-    const refreshPayload = { sub: userId, email, sessionId };
+    const accessToken = await this.signAccessToken(userId, email);
 
-    const accessToken = await this.jwtService.signAsync(accessPayload, {
-      secret: process.env.JWT_ACCESS_SECRET,
-      expiresIn: (process.env.JWT_ACCESS_EXPIRES || '15m') as any,
-    });
-
-    const refreshToken = await this.jwtService.signAsync(refreshPayload, {
-      secret: process.env.JWT_REFRESH_SECRET,
-      expiresIn: (process.env.JWT_REFRESH_EXPIRES || '7d') as any,
-    });
+    const refreshToken = await this.jwtService.signAsync(
+      { sub: userId, email, sessionId, jti: crypto.randomUUID() },
+      {
+        secret: process.env.JWT_REFRESH_SECRET,
+        expiresIn: (process.env.JWT_REFRESH_EXPIRES || '7d') as any,
+      },
+    );
 
     return { accessToken, refreshToken };
+  }
+
+  // Refresh token er hash. sha256 pura token ke dhore (bcrypt er 72 byte limit nei).
+  private hashRefreshToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  // Constant-time compare (timing attack theke bachte)
+  private safeEqual(a: string | null | undefined, b: string): boolean {
+    if (!a) return false;
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
   }
 
   private calculateExpiryDate(duration: string): Date {
@@ -758,7 +800,7 @@ export class AuthService {
       session._id.toString(),
     );
 
-    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+    const refreshTokenHash = this.hashRefreshToken(refreshToken);
     await this.userService.replaceSessionToken(
       session._id.toString(),
       refreshTokenHash,

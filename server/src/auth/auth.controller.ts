@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { AuthService } from './auth.service.js';
@@ -37,12 +38,17 @@ const REFRESH_COOKIE_MAX_AGE = REFRESH_TOKEN_TTL_MS;
 const TRUSTED_DEVICE_COOKIE_NAME = 'trustedDevice';
 const TRUSTED_DEVICE_MAX_AGE = TRUSTED_DEVICE_TTL_MS;
 
+// Rate limit: ttl millisecond e
+const MINUTE = 60 * 1000;
+const TEN_MINUTES = 10 * MINUTE;
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @ApiOperation({ summary: 'Register a new user' })
+  @Throttle({ default: { limit: 5, ttl: TEN_MINUTES } })
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   register(@Body() registerDto: RegisterDto) {
@@ -50,6 +56,7 @@ export class AuthController {
   }
 
   @ApiOperation({ summary: 'Login with email and password' })
+  @Throttle({ default: { limit: 5, ttl: MINUTE } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(
@@ -95,6 +102,7 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Refresh access token using refresh token cookie' })
   @UseGuards(JwtRefreshGuard)
+  @Throttle({ default: { limit: 30, ttl: MINUTE } })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(
@@ -119,7 +127,11 @@ export class AuthController {
       user.refreshToken,
     );
 
-    this.setRefreshCookie(res, result.refreshToken);
+    // refreshToken null hole (parallel request), browser er cookie te age thekei
+    // notun token ache, tai cookie bodlai na
+    if (result.refreshToken) {
+      this.setRefreshCookie(res, result.refreshToken);
+    }
 
     return {
       message: 'Token refreshed successfully.',
@@ -182,6 +194,7 @@ export class AuthController {
   // ─── Password Reset ───
 
   @ApiOperation({ summary: 'Request a password reset OTP via email' })
+  @Throttle({ default: { limit: 3, ttl: TEN_MINUTES } })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   forgotPassword(@Body() dto: ForgotPasswordDto) {
@@ -189,6 +202,7 @@ export class AuthController {
   }
 
   @ApiOperation({ summary: 'Verify the password reset OTP' })
+  @Throttle({ default: { limit: 5, ttl: TEN_MINUTES } })
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
   verifyOtp(@Body() dto: VerifyOtpDto) {
@@ -196,6 +210,7 @@ export class AuthController {
   }
 
   @ApiOperation({ summary: 'Reset password using the verified reset token' })
+  @Throttle({ default: { limit: 5, ttl: TEN_MINUTES } })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   resetPassword(@Body() dto: ResetPasswordDto) {
@@ -205,6 +220,7 @@ export class AuthController {
   // ─── Email Verification ───
 
   @ApiOperation({ summary: 'Verify email using the token sent via email' })
+  @Throttle({ default: { limit: 10, ttl: TEN_MINUTES } })
   @Get('verify-email')
   @HttpCode(HttpStatus.OK)
   verifyEmail(@Query('token') token?: string) {
@@ -215,6 +231,7 @@ export class AuthController {
   }
 
   @ApiOperation({ summary: 'Resend the email verification link' })
+  @Throttle({ default: { limit: 3, ttl: TEN_MINUTES } })
   @Post('resend-verification')
   @HttpCode(HttpStatus.OK)
   resendVerification(@Body() dto: ResendVerificationDto) {
@@ -254,6 +271,7 @@ export class AuthController {
   }
 
   @ApiOperation({ summary: 'Complete login using a 2FA TOTP code' })
+  @Throttle({ default: { limit: 5, ttl: MINUTE } })
   @Post('2fa/verify-login')
   @HttpCode(HttpStatus.OK)
   async verifyTwoFactorLogin(
@@ -277,6 +295,7 @@ export class AuthController {
   }
 
   @ApiOperation({ summary: 'Complete login using a 2FA recovery code' })
+  @Throttle({ default: { limit: 5, ttl: TEN_MINUTES } })
   @Post('2fa/verify-recovery')
   @HttpCode(HttpStatus.OK)
   async verifyRecoveryCode(

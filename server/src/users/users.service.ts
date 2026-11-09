@@ -177,7 +177,9 @@ export class UsersService {
   ): Promise<RefreshTokenDocument | null> {
     return this.refreshTokenModel
       .findById(sessionId)
-      .select('+tokenHash +trustedDeviceTokenHash');
+      .select(
+        '+tokenHash +trustedDeviceTokenHash +prevTokenHash +prevTokenValidUntil',
+      );
   }
 
   async revokeSession(sessionId: string) {
@@ -230,6 +232,33 @@ export class UsersService {
       { _id: sessionId },
       { $set: { tokenHash: newTokenHash, expiresAt: newExpiresAt } },
     );
+  }
+
+  /**
+   * Atomic rotation: shudhu tokhon-i update hoy jokhon session er tokenHash ekhono
+   * expectedTokenHash. Ek sathe duita request ashle shudhu ekta jite (true),
+   * onnota false pay.
+   */
+  async rotateSessionToken(
+    sessionId: string,
+    expectedTokenHash: string,
+    newTokenHash: string,
+    newExpiresAt: Date,
+    previousValidUntil: Date,
+  ): Promise<boolean> {
+    const result = await this.refreshTokenModel.updateOne(
+      { _id: sessionId, tokenHash: expectedTokenHash, isRevoked: false },
+      {
+        $set: {
+          tokenHash: newTokenHash,
+          expiresAt: newExpiresAt,
+          prevTokenHash: expectedTokenHash,
+          prevTokenValidUntil: previousValidUntil,
+        },
+      },
+    );
+
+    return result.modifiedCount === 1;
   }
 
   async setPasswordResetOtp(email: string, otpHash: string, expiresAt: Date) {

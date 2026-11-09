@@ -7,4 +7,5 @@ export interface JwtRefreshPayload {
   sub: string;
   email: string;
   sessionId: string;
+  jti?: string;
 }

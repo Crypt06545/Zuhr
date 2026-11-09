@@ -47,6 +47,22 @@ export class RefreshToken {
   })
   expiresAt: Date;
 
+  // Rotate howar age er token er hash (shudhu kichhukkhon er grace window er jonno)
+  @Prop({
+    type: String,
+    default: null,
+    select: false,
+  })
+  prevTokenHash: string | null;
+
+  // Purono token ta kokhon porjonto grace hishebe chole
+  @Prop({
+    type: Date,
+    default: null,
+    select: false,
+  })
+  prevTokenValidUntil: Date | null;
+
   // Trusted device token hash
   @Prop({
     type: String,

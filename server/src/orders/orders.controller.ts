@@ -18,6 +18,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { Throttle } from '@nestjs/throttler';
 
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard.js';
@@ -61,6 +62,7 @@ export class OrdersController {
 
   // ───────── Public (no login): order tracking ─────────
 
+  @Throttle({ default: { limit: 30, ttl: 60 * 1000 } })
   @Get('track/:orderNumber')
   track(@Param('orderNumber') orderNumber: string) {
     return this.ordersService.trackPublic(orderNumber);
@@ -77,6 +79,7 @@ export class OrdersController {
 
   // Send a fresh Idempotency-Key (any random 8-64 chars, e.g. a UUID) with every
   // checkout attempt. Sending the same request again returns the same order.
+  @Throttle({ default: { limit: 10, ttl: 60 * 1000 } })
   @UseGuards(JwtAccessGuard)
   @Post()
   @HttpCode(HttpStatus.CREATED)
