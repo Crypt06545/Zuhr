@@ -1,8 +1,70 @@
 "use client";
 
+import type { ComponentType, SVGProps } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { MapPin, Phone, Mail, Send, Globe } from "lucide-react";
+import { MapPin, Phone, Mail, Send } from "lucide-react";
+
+type IconProps = SVGProps<SVGSVGElement>;
+
+const FacebookIcon = (props: IconProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    {...props}
+  >
+    <path
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"
+    />
+  </svg>
+);
+
+const InstagramIcon = (props: IconProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    {...props}
+  >
+    <g
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    >
+      <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+      <path d="M16 11.37A4 4 0 1 1 12.63 8A4 4 0 0 1 16 11.37m1.5-4.87h.01" />
+    </g>
+  </svg>
+);
+
+const TiktokIcon = (props: IconProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    {...props}
+  >
+    <path
+      fill="currentColor"
+      d="M20.357 7.75a.537.537 0 0 0-.495-.516a4.7 4.7 0 0 1-2.415-.938a4.85 4.85 0 0 1-1.887-3.3a.54.54 0 0 0-.517-.496h-2.108a.517.517 0 0 0-.517.527v12.59a2.794 2.794 0 0 1-2.974 2.762a2.815 2.815 0 0 1-2.51-3.711A2.836 2.836 0 0 1 9.93 12.78a.506.506 0 0 0 .558-.506V9.807s-.896-.063-1.202-.063a5.27 5.27 0 0 0-4.101 1.93a5.8 5.8 0 0 0-1.37 2.52a5.86 5.86 0 0 0 2.14 6.072A5.93 5.93 0 0 0 9.591 21.5q.451 0 .896-.063A5.95 5.95 0 0 0 13.8 19.78a5.84 5.84 0 0 0 1.75-4.133V8.71a7.84 7.84 0 0 0 4.218 1.613a.517.517 0 0 0 .548-.527V7.751z"
+    />
+  </svg>
+);
 
 const FOOTER_LINKS = {
   shop: {
@@ -35,12 +97,23 @@ const FOOTER_LINKS = {
   },
 } as const;
 
-const SOCIALS = [
-  { icon: Globe, label: "Facebook", href: "https://facebook.com" },
-  { icon: Globe, label: "Instagram", href: "https://instagram.com" },
-  { icon: Globe, label: "Twitter", href: "https://twitter.com" },
-  { icon: Globe, label: "YouTube", href: "https://youtube.com" },
-] as const;
+const SOCIALS: {
+  icon: ComponentType<IconProps>;
+  label: string;
+  href: string;
+}[] = [
+  {
+    icon: FacebookIcon,
+    label: "Facebook",
+    href: "https://www.facebook.com/zuhrbdperfume",
+  },
+  {
+    icon: InstagramIcon,
+    label: "Instagram",
+    href: "https://www.instagram.com/zuhr.bd",
+  },
+  { icon: TiktokIcon, label: "TikTok", href: "https://tiktok.com" },
+];
 
 const Footer = () => {
   return (
@@ -166,7 +239,7 @@ const Footer = () => {
                   rel="noopener noreferrer"
                   className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-foreground/60 transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
                 >
-                  <Icon size={15} strokeWidth={2} aria-hidden="true" />
+                  <Icon width={15} height={15} aria-hidden="true" />
                 </a>
               ))}
             </div>
