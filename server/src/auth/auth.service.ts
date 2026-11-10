@@ -24,6 +24,8 @@ import { Disable2faDto } from './dto/disable-2fa.dto.js';
 
 import {
   MAX_ACTIVE_DEVICES,
+  OTP_MAX_ATTEMPTS,
+  OTP_RESEND_COOLDOWN_MS,
   REFRESH_ROTATION_GRACE_MS,
   REFRESH_TOKEN_TTL_MS,
   TRUSTED_DEVICE_TTL_MS,
@@ -310,8 +312,8 @@ export class AuthService {
       throw new UnauthorizedException('Session expired. Please login again.');
     }
 
-    // bcrypt na: bcrypt shudhu prothom 72 byte dhore, JWT er shuru ongsho shob
-    // token e same. tai purono token o match kore jeto. sha256 pura token dhore.
+    // bcrypt নয়: bcrypt শুধু প্রথম ৭২ বাইট দেখে, আর JWT-র শুরুর অংশ সব টোকেনে এক।
+    // তাই পুরনো টোকেনও মিলে যেত। sha256 পুরো টোকেন ধরে হ্যাশ করে।
     const providedHash = this.hashRefreshToken(providedRefreshToken);
 
     const isCurrent = this.safeEqual(session.tokenHash, providedHash);
@@ -323,13 +325,13 @@ export class AuthService {
       this.safeEqual(session.prevTokenHash, providedHash);
 
     if (!isCurrent && !isJustRotated) {
-      // Purono / vul / churi howa token: pura session bondho
+      // পুরনো / ভুল / চুরি হওয়া টোকেন: পুরো সেশন বন্ধ
       await this.userService.revokeSession(sessionId);
       throw new UnauthorizedException('Invalid session. Please login again.');
     }
 
-    // Ek sathe duita request: ager ta already rotate koreche, browser er cookie te
-    // notun token ache. Amra shudhu access token dei, refresh token ar bodlai na.
+    // একসাথে দুটো রিকোয়েস্ট: আগেরটা রিফ্রেশ টোকেন বদলে ফেলেছে, ব্রাউজারের কুকিতে
+    // নতুন টোকেন আছে। আমরা শুধু অ্যাক্সেস টোকেন দিই, রিফ্রেশ টোকেন আর বদলাই না।
     if (isJustRotated) {
       const accessToken = await this.signAccessToken(userId, email);
       return { accessToken, refreshToken: null };
@@ -352,7 +354,7 @@ export class AuthService {
     );
 
     if (!rotated) {
-      // Parallel request amader age rotate kore felechhe
+      // সমান্তরাল রিকোয়েস্ট আমাদের আগেই টোকেন বদলে ফেলেছে
       return { accessToken, refreshToken: null };
     }
 
@@ -409,12 +411,12 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  // Refresh token er hash. sha256 pura token ke dhore (bcrypt er 72 byte limit nei).
+  // রিফ্রেশ টোকেনের হ্যাশ। sha256 পুরো টোকেন ধরে (bcrypt-এর ৭২ বাইট সীমা নেই)।
   private hashRefreshToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
 
-  // Constant-time compare (timing attack theke bachte)
+  // সমান সময়ে তুলনা (timing attack ঠেকাতে)
   private safeEqual(a: string | null | undefined, b: string): boolean {
     if (!a) return false;
     const bufA = Buffer.from(a);
@@ -434,12 +436,14 @@ export class AuthService {
   // ─── Forgot Password ───
 
   async forgotPassword(dto: ForgotPasswordDto) {
+    const genericResponse = {
+      message: 'If this email is registered, an OTP has been sent.',
+    };
+
     const user = await this.userService.getUserByEmail(dto.email);
 
     if (!user) {
-      return {
-        message: 'If this email is registered, an OTP has been sent.',
-      };
+      return genericResponse;
     }
 
     const otp = crypto.randomInt(100000, 999999).toString();
@@ -448,7 +452,18 @@ export class AuthService {
     const expiresMinutes = Number(process.env.OTP_EXPIRES_MINUTES ?? 5);
     const expiresAt = new Date(Date.now() + expiresMinutes * 60 * 1000);
 
-    await this.userService.setPasswordResetOtp(dto.email, otpHash, expiresAt);
+    const created = await this.userService.setPasswordResetOtp(
+      dto.email,
+      otpHash,
+      expiresAt,
+      OTP_RESEND_COOLDOWN_MS,
+    );
+
+    // অপেক্ষার সময় চলছে: নতুন OTP/ইমেইল পাঠাই না, চেষ্টার গণনাও শূন্য করি না।
+    // একই বার্তা দিই, যাতে বাইরে থেকে বোঝা না যায় অ্যাকাউন্ট আছে কিনা বা অপেক্ষায় আছে কিনা।
+    if (!created) {
+      return genericResponse;
+    }
 
     await this.emailQueue.add(
       'send-otp',
@@ -461,49 +476,46 @@ export class AuthService {
       },
     );
 
-    return {
-      message: 'If this email is registered, an OTP has been sent.',
-    };
+    return genericResponse;
   }
 
   // ─── Verify OTP ───
 
   async verifyOtp(dto: VerifyOtpDto) {
-    const user = await this.userService.getUserForPasswordReset(dto.email);
+    // আগে অনুমানের সুযোগ দখল করি (atomic), তারপর OTP মেলাই। একসাথে অনেক রিকোয়েস্ট
+    // পাঠালেও শুধু OTP_MAX_ATTEMPTS টা রিকোয়েস্ট OTP হ্যাশ পাবে।
+    // দখল না হলে: OTP নেই / মেয়াদ শেষ / সুযোগ শেষ / ইমেইল ভুল। সবার জন্য একই বার্তা।
+    const reserved = await this.userService.reservePasswordResetAttempt(
+      dto.email,
+      OTP_MAX_ATTEMPTS,
+    );
 
-    if (
-      !user ||
-      !user.passwordResetOtpHash ||
-      !user.passwordResetOtpExpiresAt
-    ) {
-      throw new BadRequestException('Invalid or expired OTP.');
-    }
-
-    if (user.passwordResetAttempts >= 5) {
-      await this.userService.clearPasswordResetOtp(dto.email);
+    if (!reserved) {
       throw new BadRequestException(
-        'Too many failed attempts. Please request a new OTP.',
+        'Invalid or expired OTP. Please request a new one.',
       );
     }
 
-    if (user.passwordResetOtpExpiresAt < new Date()) {
-      await this.userService.clearPasswordResetOtp(dto.email);
-      throw new BadRequestException(
-        'OTP has expired. Please request a new one.',
-      );
-    }
-
-    const isOtpValid = await bcrypt.compare(dto.otp, user.passwordResetOtpHash);
+    const isOtpValid = await bcrypt.compare(dto.otp, reserved.otpHash);
 
     if (!isOtpValid) {
-      await this.userService.incrementResetAttempts(dto.email);
       throw new BadRequestException('Invalid OTP.');
     }
 
-    await this.userService.clearPasswordResetOtp(dto.email);
+    // OTP শুধু একবার কাজ করবে: একসাথে দুটো ঠিক রিকোয়েস্ট এলে একটাই জিতবে
+    const consumed = await this.userService.consumePasswordResetOtp(
+      dto.email,
+      reserved.otpHash,
+    );
+
+    if (!consumed) {
+      throw new BadRequestException(
+        'Invalid or expired OTP. Please request a new one.',
+      );
+    }
 
     const resetToken = await this.jwtService.signAsync(
-      { sub: user._id.toString(), purpose: 'password-reset' },
+      { sub: reserved.userId, purpose: 'password-reset' },
       {
         secret: process.env.PASSWORD_RESET_TOKEN_SECRET,
         expiresIn: (process.env.PASSWORD_RESET_TOKEN_EXPIRES || '10m') as any,

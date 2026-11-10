@@ -80,6 +80,10 @@ export class User {
   @Prop({ type: Number, default: 0, select: false })
   passwordResetAttempts: number;
 
+  // OTP কখন পাঠানো হয়েছিল (আবার পাঠানোর অপেক্ষার সময় মাপতে)
+  @Prop({ type: Date, default: null, select: false })
+  passwordResetOtpSentAt: Date | null;
+
   createdAt?: Date;
   updatedAt?: Date;
 }

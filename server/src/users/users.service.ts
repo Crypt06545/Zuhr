@@ -235,9 +235,8 @@ export class UsersService {
   }
 
   /**
-   * Atomic rotation: shudhu tokhon-i update hoy jokhon session er tokenHash ekhono
-   * expectedTokenHash. Ek sathe duita request ashle shudhu ekta jite (true),
-   * onnota false pay.
+   * Atomic রোটেশন: শুধু তখনই আপডেট হয় যখন সেশনের tokenHash এখনো expectedTokenHash।
+   * একসাথে দুটো রিকোয়েস্ট এলে শুধু একটা জেতে (true), অন্যটা false পায়।
    */
   async rotateSessionToken(
     sessionId: string,
@@ -261,17 +260,40 @@ export class UsersService {
     return result.modifiedCount === 1;
   }
 
-  async setPasswordResetOtp(email: string, otpHash: string, expiresAt: Date) {
-    await this.userModel.updateOne(
-      { email },
+  /**
+   * নতুন OTP বসায়। আগের OTP পাঠানোর পর `cooldownMs` সময় না গেলে কিছু করে না
+   * (false দেয়)। তাই বারবার "forgot password" চেয়ে চেষ্টার গণনা শূন্য করা যায় না।
+   * অপেক্ষার সময় যাচাই আর লেখা একই atomic কোয়েরিতে হয়।
+   */
+  async setPasswordResetOtp(
+    email: string,
+    otpHash: string,
+    expiresAt: Date,
+    cooldownMs: number,
+  ): Promise<boolean> {
+    const now = new Date();
+    const cooldownLimit = new Date(now.getTime() - cooldownMs);
+
+    const result = await this.userModel.updateOne(
+      {
+        email,
+        // null মানে কখনো পাঠানো হয়নি (ফিল্ড না থাকলেও null-এর মতো মেলে)
+        $or: [
+          { passwordResetOtpSentAt: null },
+          { passwordResetOtpSentAt: { $lte: cooldownLimit } },
+        ],
+      },
       {
         $set: {
           passwordResetOtpHash: otpHash,
           passwordResetOtpExpiresAt: expiresAt,
+          passwordResetOtpSentAt: now,
           passwordResetAttempts: 0,
         },
       },
     );
+
+    return result.modifiedCount === 1;
   }
 
   async getUserType(userId: string): Promise<UserType> {
@@ -288,24 +310,44 @@ export class UsersService {
     return user.userType ?? UserType.USER;
   }
 
-  async getUserForPasswordReset(email: string) {
-    return this.userModel
-      .findOne({ email })
-      .select(
-        '+passwordResetOtpHash +passwordResetOtpExpiresAt +passwordResetAttempts',
-      );
+  /**
+   * একটা অনুমানের "সুযোগ" atomic ভাবে দখল করে এবং OTP হ্যাশ ফেরত দেয়।
+   * ফিল্টারে `attempts < max` আর মেয়াদের শর্ত আছে, তাই একসাথে ১০০০টা রিকোয়েস্ট
+   * পাঠালেও শুধু `max` টা রিকোয়েস্ট হ্যাশ পাবে, বাকিরা null পাবে।
+   */
+  async reservePasswordResetAttempt(
+    email: string,
+    maxAttempts: number,
+  ): Promise<{ userId: string; otpHash: string } | null> {
+    const user = await this.userModel
+      .findOneAndUpdate(
+        {
+          email,
+          passwordResetOtpHash: { $ne: null },
+          passwordResetOtpExpiresAt: { $gt: new Date() },
+          passwordResetAttempts: { $lt: maxAttempts },
+        },
+        { $inc: { passwordResetAttempts: 1 } },
+        { returnDocument: 'after' },
+      )
+      .select('+passwordResetOtpHash')
+      .exec();
+
+    if (!user?.passwordResetOtpHash) return null;
+
+    return { userId: user._id.toString(), otpHash: user.passwordResetOtpHash };
   }
 
-  async incrementResetAttempts(email: string) {
-    await this.userModel.updateOne(
-      { email },
-      { $inc: { passwordResetAttempts: 1 } },
-    );
-  }
-
-  async clearPasswordResetOtp(email: string) {
-    await this.userModel.updateOne(
-      { email },
+  /**
+   * OTP শুধু একবার কাজ করবে: হ্যাশ এখনো আগের মতো থাকলেই মোছা হয়।
+   * দুটো রিকোয়েস্ট একসাথে ঠিক OTP দিলেও শুধু একটা true পাবে।
+   */
+  async consumePasswordResetOtp(
+    email: string,
+    otpHash: string,
+  ): Promise<boolean> {
+    const result = await this.userModel.updateOne(
+      { email, passwordResetOtpHash: otpHash },
       {
         $set: {
           passwordResetOtpHash: null,
@@ -314,6 +356,8 @@ export class UsersService {
         },
       },
     );
+
+    return result.modifiedCount === 1;
   }
 
   async updatePassword(userId: string, newPasswordHash: string) {
