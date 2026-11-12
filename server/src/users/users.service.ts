@@ -389,16 +389,36 @@ export class UsersService {
       .select('+twoFactorSecret +twoFactorRecoveryCodeHashes');
   }
 
-  async setTwoFactorSecret(userId: string, secret: string) {
-    await this.userModel.updateOne(
-      { _id: userId },
+  /**
+   * নতুন (এখনো চালু না হওয়া) 2FA secret বসায়। ২FA ইতিমধ্যে চালু থাকলে কিছুই বদলায় না
+   * এবং false দেয়। শর্ত যাচাই আর লেখা একই atomic কোয়েরিতে, তাই যাচাই আর লেখার
+   * মাঝখানে অন্য রিকোয়েস্ট ২FA চালু করে ফেললেও চালু থাকা secret কখনো বদলাবে না।
+   */
+  async setTwoFactorSecret(userId: string, secret: string): Promise<boolean> {
+    const result = await this.userModel.updateOne(
+      { _id: userId, twoFactorEnabled: { $ne: true } },
       { $set: { twoFactorSecret: secret } },
     );
+
+    return result.matchedCount === 1;
   }
 
-  async enableTwoFactor(userId: string, recoveryCodeHashes: string[]) {
-    await this.userModel.updateOne(
-      { _id: userId },
+  /**
+   * ২FA চালু করে। শুধু তখনই চালু হয় যখন এখনো চালু হয়নি এবং সংরক্ষিত secret ঠিক
+   * সেটাই যেটার কোড ইউজার যাচাই করেছে (expectedSecret)। তাই দুটো রিকোয়েস্ট
+   * একসাথে এলে একটাই জেতে, আর যাচাইয়ের মাঝখানে secret বদলে গেলে চালু হয় না।
+   */
+  async enableTwoFactor(
+    userId: string,
+    recoveryCodeHashes: string[],
+    expectedSecret: string,
+  ): Promise<boolean> {
+    const result = await this.userModel.updateOne(
+      {
+        _id: userId,
+        twoFactorEnabled: { $ne: true },
+        twoFactorSecret: expectedSecret,
+      },
       {
         $set: {
           twoFactorEnabled: true,
@@ -406,6 +426,8 @@ export class UsersService {
         },
       },
     );
+
+    return result.modifiedCount === 1;
   }
 
   async disableTwoFactor(userId: string) {

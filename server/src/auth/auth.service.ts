@@ -559,9 +559,30 @@ export class AuthService {
   // ─── Two-Factor Authentication ───
 
   async generateTwoFactorSecret(userId: string, email: string) {
+    const alreadyEnabledError = new BadRequestException(
+      '2FA is already enabled. Disable it first to set up a new authenticator.',
+    );
+
+    // ২FA চালু থাকলে নতুন secret বসানো যাবে না। না হলে শুধু অ্যাক্সেস টোকেন হাতে পাওয়া
+    // কেউ পাসওয়ার্ড ছাড়াই নিজের secret বসিয়ে আসল ইউজারকে বের করে দিতে পারত।
+    const user = await this.userService.getUserForTwoFactorSetup(userId);
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    if (user.twoFactorEnabled) {
+      throw alreadyEnabledError;
+    }
+
     const secret = this.twoFactorService.generateSecret();
 
-    await this.userService.setTwoFactorSecret(userId, secret);
+    // লেখার সময় ডাটাবেসও আবার শর্ত দেখে (পড়া আর লেখার মাঝে ২FA চালু হয়ে গেলে false আসে)
+    const saved = await this.userService.setTwoFactorSecret(userId, secret);
+
+    if (!saved) {
+      throw alreadyEnabledError;
+    }
 
     const qrCodeDataUrl = await this.twoFactorService.generateQrCodeDataUrl(
       email,
@@ -622,7 +643,18 @@ export class AuthService {
     const hashedCodes =
       await this.twoFactorService.hashRecoveryCodes(recoveryCodes);
 
-    await this.userService.enableTwoFactor(userId, hashedCodes);
+    // শুধু তখনই চালু হয় যখন secret এখনো সেটাই যেটার কোড যাচাই হয়েছে, আর ২FA এখনো বন্ধ
+    const enabled = await this.userService.enableTwoFactor(
+      userId,
+      hashedCodes,
+      user.twoFactorSecret,
+    );
+
+    if (!enabled) {
+      throw new BadRequestException(
+        '2FA setup was changed or already completed. Please start the setup again.',
+      );
+    }
 
     return {
       message:

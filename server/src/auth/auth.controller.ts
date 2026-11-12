@@ -243,6 +243,7 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Generate a 2FA secret and QR code' })
   @UseGuards(JwtAccessGuard)
+  @Throttle({ default: { limit: 10, ttl: TEN_MINUTES } })
   @Post('2fa/generate')
   @HttpCode(HttpStatus.OK)
   generateTwoFactor(@Req() req: Request) {
@@ -253,6 +254,7 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Enable 2FA after verifying the setup code' })
   @UseGuards(JwtAccessGuard)
+  @Throttle({ default: { limit: 10, ttl: TEN_MINUTES } })
   @Post('2fa/enable')
   @HttpCode(HttpStatus.OK)
   enableTwoFactor(@Req() req: Request, @Body() dto: Enable2faDto) {
@@ -263,6 +265,7 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Disable 2FA (requires password + code)' })
   @UseGuards(JwtAccessGuard)
+  @Throttle({ default: { limit: 5, ttl: TEN_MINUTES } })
   @Post('2fa/disable')
   @HttpCode(HttpStatus.OK)
   disableTwoFactor(@Req() req: Request, @Body() dto: Disable2faDto) {
