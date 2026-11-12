@@ -65,10 +65,97 @@ export class UsersService {
   }
 
   async updateLastLogin(userId: string) {
+    // সফল লগইনে আগের ভুল চেষ্টা আর লক মুছে যায় (আলাদা লেখার দরকার হয় না)
     await this.userModel.updateOne(
       { _id: userId },
-      { $set: { lastLoginAt: new Date() } },
+      {
+        $set: {
+          lastLoginAt: new Date(),
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        },
+      },
     );
+  }
+
+  /**
+   * লগইনের একটা "সুযোগ" atomic ভাবে দখল করে এবং পাসওয়ার্ড-সহ ইউজার ফেরত দেয়।
+   * অ্যাকাউন্ট লক থাকলে বা ইমেইল না মিললে null।
+   *
+   * দুই ধাপ, দুটোই একটা করে atomic কোয়েরি:
+   *  ১) সাধারণ সুযোগ: গণনা (maxAttempts - 1) এর নিচে থাকলে এক বাড়ায়
+   *  ২) শেষ সুযোগ: সুযোগ দেওয়ার সাথে সাথে একই কোয়েরিতে লক বসিয়ে দেয়
+   * তাই একসাথে হাজারটা রিকোয়েস্ট এলেও ঠিক maxAttempts টা যাচাই হয়, আর
+   * "গণনা শেষ কিন্তু লক বসেনি" এমন মাঝামাঝি অবস্থা তৈরি হয় না।
+   */
+  async reserveLoginAttempt(
+    email: string,
+    maxAttempts: number,
+    lockMs: number,
+  ): Promise<UserDocument | null> {
+    const now = new Date();
+    const notLocked = {
+      $or: [{ lockedUntil: null }, { lockedUntil: { $lte: now } }],
+    };
+
+    const normal = await this.userModel
+      .findOneAndUpdate(
+        {
+          email,
+          $and: [
+            notLocked,
+            {
+              // null মানে গণনা নেই বা ফিল্ডই নেই (পুরনো ডকুমেন্ট), সেটাকেও ০ ধরা হয়
+              $or: [
+                { failedLoginAttempts: null },
+                { failedLoginAttempts: { $lt: maxAttempts - 1 } },
+              ],
+            },
+          ],
+        },
+        { $inc: { failedLoginAttempts: 1 } },
+        { returnDocument: 'after' },
+      )
+      .select('+password')
+      .exec();
+
+    if (normal) return normal;
+
+    return this.userModel
+      .findOneAndUpdate(
+        { email, ...notLocked, failedLoginAttempts: maxAttempts - 1 },
+        {
+          $set: {
+            failedLoginAttempts: 0,
+            lockedUntil: new Date(now.getTime() + lockMs),
+          },
+        },
+        { returnDocument: 'after' },
+      )
+      .select('+password')
+      .exec();
+  }
+
+  /** পাসওয়ার্ড ঠিক ছিল কিন্তু অন্য কারণে আটকেছে: এই চেষ্টা ভুল চেষ্টা হিসেবে গোনা হয় না */
+  async resetLoginFailures(userId: string) {
+    await this.userModel.updateOne(
+      { _id: userId },
+      { $set: { failedLoginAttempts: 0, lockedUntil: null } },
+    );
+  }
+
+  /** অ্যাকাউন্টের অবস্থা (Active/Inactive/Suspended)। ইউজার না থাকলে null। */
+  async getUserStatus(userId: string): Promise<UserStatus | null> {
+    const user = await this.userModel
+      .findById(userId)
+      .select('status')
+      .lean<{ status?: UserStatus }>()
+      .exec();
+
+    if (!user) return null;
+
+    // status ফিল্ড না থাকা পুরনো ডকুমেন্টকে Active ধরা হয় (স্কিমার ডিফল্টের মতো)
+    return user.status ?? UserStatus.ACTIVE;
   }
 
   // ─── Profile ───
@@ -367,6 +454,9 @@ export class UsersService {
         $set: {
           password: newPasswordHash,
           passwordChangedAt: new Date(),
+          // ইমেইলের OTP দিয়ে মালিকানা প্রমাণ হয়েছে, তাই লক খুলে যায়
+          failedLoginAttempts: 0,
+          lockedUntil: null,
         },
       },
     );

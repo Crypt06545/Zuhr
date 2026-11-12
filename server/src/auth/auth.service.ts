@@ -1,6 +1,9 @@
 // src/auth/auth.service.ts
 import {
   BadRequestException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -11,6 +14,7 @@ import crypto from 'crypto';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { UsersService, DeviceInfo } from '../users/users.service.js';
+import { UserStatus } from '../users/schemas/user.schema.js';
 import { MailerService } from '../common/mailer/mailer.service.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
@@ -23,6 +27,8 @@ import { Enable2faDto } from './dto/enable-2fa.dto.js';
 import { Disable2faDto } from './dto/disable-2fa.dto.js';
 
 import {
+  LOGIN_LOCK_MS,
+  LOGIN_MAX_ATTEMPTS,
   MAX_ACTIVE_DEVICES,
   OTP_MAX_ATTEMPTS,
   OTP_RESEND_COOLDOWN_MS,
@@ -50,6 +56,13 @@ interface LoginSuccessResult {
 }
 
 type LoginResult = TwoFactorRequiredResult | LoginSuccessResult;
+
+// অজানা ইমেইলেও একটা আসল bcrypt যাচাই চালানোর জন্য, যাতে সময় দেখে বোঝা না যায়
+// ইমেইলটা নিবন্ধিত কিনা।
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync(
+  crypto.randomBytes(16).toString('hex'),
+  10,
+);
 
 @Injectable()
 export class AuthService {
@@ -106,10 +119,16 @@ export class AuthService {
     deviceInfo: DeviceInfo,
     trustedDeviceToken: string | null,
   ): Promise<LoginResult> {
-    const user = await this.userService.getUserForLogin(loginDto.email);
+    // আগে লগইনের "সুযোগ" দখল করি (atomic), তারপর পাসওয়ার্ড মেলাই। একসাথে অনেক
+    // রিকোয়েস্ট পাঠালেও শুধু LOGIN_MAX_ATTEMPTS টা যাচাই হয়, তারপর অ্যাকাউন্ট লক।
+    const user = await this.userService.reserveLoginAttempt(
+      loginDto.email,
+      LOGIN_MAX_ATTEMPTS,
+      LOGIN_LOCK_MS,
+    );
 
     if (!user) {
-      throw new UnauthorizedException('Invalid email or password.');
+      return this.rejectLoginWithoutAttempt(loginDto);
     }
 
     const isPasswordValid = await bcrypt.compare(
@@ -118,19 +137,35 @@ export class AuthService {
     );
 
     if (!isPasswordValid) {
+      // এটা শেষ সুযোগ ছিল আর লক বসে গেছে: ইউজারকে জানিয়ে দিই
+      if (user.lockedUntil && user.lockedUntil > new Date()) {
+        throw this.accountLockedError(user.lockedUntil);
+      }
+
       throw new UnauthorizedException('Invalid email or password.');
+    }
+
+    const userId = user._id.toString();
+
+    // সঠিক পাসওয়ার্ড দেখানো হয়েছে, তাই এখান থেকে আটকে গেলে (সাসপেন্ড, ইমেইল
+    // যাচাই বাকি) এই চেষ্টাকে ভুল চেষ্টা হিসেবে ধরি না। স্ট্যাটাস শুধু সঠিক
+    // পাসওয়ার্ডের পরেই জানাই, যাতে বাইরে থেকে অ্যাকাউন্টের অবস্থা বোঝা না যায়।
+    if ((user.status ?? UserStatus.ACTIVE) !== UserStatus.ACTIVE) {
+      await this.userService.resetLoginFailures(userId);
+      throw new ForbiddenException(
+        'Your account is not active. Please contact support.',
+      );
     }
 
     const requireVerification =
       process.env.REQUIRE_EMAIL_VERIFICATION === 'true';
 
     if (requireVerification && !user.emailVerifiedAt) {
+      await this.userService.resetLoginFailures(userId);
       throw new UnauthorizedException(
         'Please verify your email before logging in. Check your inbox or request a new verification link.',
       );
     }
-
-    const userId = user._id.toString();
 
     /**
      * ------------------------------------------------
@@ -168,6 +203,9 @@ export class AuthService {
     // ─── 2FA Required ───
 
     if (user.twoFactorEnabled) {
+      // পাসওয়ার্ড ঠিক ছিল, তাই পাসওয়ার্ডের ভুল চেষ্টার গণনা মুছে দিই
+      await this.userService.resetLoginFailures(userId);
+
       const tempToken = await this.jwtService.signAsync(
         { sub: userId, purpose: '2fa-pending' },
         {
@@ -223,6 +261,38 @@ export class AuthService {
         email: user.email,
       },
     };
+  }
+
+  // সুযোগ দখল করা যায়নি: হয় অ্যাকাউন্ট লক, নয়তো ইমেইল অজানা
+  private async rejectLoginWithoutAttempt(loginDto: LoginDto): Promise<never> {
+    const existing = await this.userService.getUserByEmail(loginDto.email);
+
+    if (existing?.lockedUntil && existing.lockedUntil > new Date()) {
+      throw this.accountLockedError(existing.lockedUntil);
+    }
+
+    if (existing) {
+      // ইউজার আছে, লকও নেই, তবু সুযোগ মেলেনি: গণনা অস্বাভাবিক অবস্থায় আটকে আছে
+      // (যেমন কেউ হাতে বদলেছে)। ঠিক করে দিই, ইউজার আবার চেষ্টা করলে কাজ করবে।
+      await this.userService.resetLoginFailures(existing._id.toString());
+    } else {
+      // অজানা ইমেইল: সময় যেন নিবন্ধিত ইমেইলের মতোই লাগে তাই একটা নকল যাচাই
+      await bcrypt.compare(loginDto.password, DUMMY_PASSWORD_HASH);
+    }
+
+    throw new UnauthorizedException('Invalid email or password.');
+  }
+
+  private accountLockedError(lockedUntil: Date): HttpException {
+    const minutes = Math.max(
+      1,
+      Math.ceil((lockedUntil.getTime() - Date.now()) / 60_000),
+    );
+
+    return new HttpException(
+      `Too many failed login attempts. Please try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
   }
 
   // ─── Email Verification ───
@@ -328,6 +398,16 @@ export class AuthService {
       // পুরনো / ভুল / চুরি হওয়া টোকেন: পুরো সেশন বন্ধ
       await this.userService.revokeSession(sessionId);
       throw new UnauthorizedException('Invalid session. Please login again.');
+    }
+
+    // অ্যাকাউন্ট সাসপেন্ড বা নিষ্ক্রিয় হলে আর নতুন টোকেন নয়, সব সেশনও বন্ধ
+    const status = await this.userService.getUserStatus(userId);
+
+    if (status !== UserStatus.ACTIVE) {
+      await this.userService.revokeAllSessions(userId);
+      throw new UnauthorizedException(
+        'Your account is not active. Please contact support.',
+      );
     }
 
     // একসাথে দুটো রিকোয়েস্ট: আগেরটা রিফ্রেশ টোকেন বদলে ফেলেছে, ব্রাউজারের কুকিতে
@@ -715,6 +795,13 @@ export class AuthService {
       throw new UnauthorizedException('2FA is not properly configured.');
     }
 
+    // পাসওয়ার্ড ধাপের পর অ্যাকাউন্ট সাসপেন্ড হয়ে থাকতে পারে
+    if ((user.status ?? UserStatus.ACTIVE) !== UserStatus.ACTIVE) {
+      throw new ForbiddenException(
+        'Your account is not active. Please contact support.',
+      );
+    }
+
     const isValid = await this.twoFactorService.verifyCode(
       user.twoFactorSecret,
       dto.code,
@@ -746,6 +833,12 @@ export class AuthService {
 
     if (!user || !user.twoFactorEnabled) {
       throw new UnauthorizedException('2FA is not enabled for this account.');
+    }
+
+    if ((user.status ?? UserStatus.ACTIVE) !== UserStatus.ACTIVE) {
+      throw new ForbiddenException(
+        'Your account is not active. Please contact support.',
+      );
     }
 
     let matchedIndex = -1;
